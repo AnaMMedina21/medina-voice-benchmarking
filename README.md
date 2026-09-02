@@ -240,22 +240,67 @@ grade it, and no model judges another model.
 
 ## Files
 
-The build friction log ships separately, alongside the project rather than in
-it.
+Three separate things live here, and keeping them separate is the point. The
+harness **measures**. The page **presents** numbers measured elsewhere and
+measures nothing. The worker **serves** live turns, which are a different kind
+of number again.
+
+**The benchmark — the only thing that produces a measurement**
 
 ```
-agent.py         the headless benchmark harness, both arms, one swap variable
-requirements.txt Python deps, pinned — the anthropic pin is load-bearing
-app/             the page: ported markup, globals.css from index.html
-components/      Players, PromptList, Results
-lib/run-data.ts  generated from results.csv at build time; never hand-edited
-scripts/         generate-run-data.ts, render-audio.ts
-public/audio/    one MP3 per prompt per arm, the median rep
-prompts.json     8 voice-shaped prompts, each with a deterministic assertion
-analyze.py       stdlib only; reads results.csv, prints a markdown table
-results.csv      raw rows, committed
-.env.example     variable names, empty values
+agent.py           headless harness: injects text turns, times every stage, writes results.csv
+bench_config.py    the arms and the TTS control, in one place so the two entrypoints can't drift
+prompts.json       8 voice-shaped prompts, each with a deterministic assertion
+analyze.py         stdlib only; reads results.csv, prints a markdown table
+results.csv        raw per-turn rows, committed — two appended runs, 96 turns
+requirements.txt   Python deps, pinned; the anthropic pin is load-bearing
 ```
+
+**The page — renders those numbers, measures nothing**
+
+```
+app/page.tsx              mode toggle, recorded players, prompt list
+app/globals.css           the <style> block from index.html, extracted verbatim, plus results/live/legend rules
+app/layout.tsx            shell and metadata
+app/api/token/route.ts    creates the room with metadata, dispatches the worker, mints a receive-only token
+components/Players.tsx    recorded rows: wait drawn to scale, then the clip
+components/PromptList.tsx the eight prompts and their per-prompt deltas
+components/Results.tsx    summary table and distribution strip
+components/Legend.tsx     what arm, TTFA, TTFT, TTFB and p95 actually span
+components/LivePlayers.tsx    live rows — dashed, tinted, never styled like recorded ones
+components/AddLivePrompt.tsx  the two-field form; the second field is the assertion
+lib/run-data.ts        GENERATED from results.csv at build time; never hand-edited
+lib/aggregate.ts       median, nearest-rank p95, and the rule that null is never zero
+lib/live-session.ts    connect, subscribe, stop the clock on the first audible frame, tear down
+lib/waveform.ts        the decorative bars — seeded, not derived from the audio
+scripts/generate-run-data.ts  results.csv -> lib/run-data.ts
+scripts/render-audio.ts       one MP3 per prompt per arm, from the median rep's exact text
+public/audio/                 16 clips: 8 prompts x 2 arms
+index.html                    the original single-file demo; globals.css was extracted from it
+```
+
+**The live worker — runs on Render, joins rooms**
+
+```
+worker/agent.py    reads prompt + assertion from room metadata, speaks the reply,
+                   publishes stage timings, deletes the room when the turn ends
+```
+
+**Config and agent guidance**
+
+```
+.env.example       the eight variable names, empty values
+.gitignore         .env.local, .venv, node_modules, .next, .vercel, the writing profiles
+package.json       generate / render-audio / dev / build / start
+AGENTS.md          how to work in this repo
+CLAUDE.md          the target design
+```
+
+`tsconfig.json`, `next.config.mjs` and `package-lock.json` are stock Next.js
+scaffolding and behave the way you'd expect.
+
+Two files you won't find. `friction-log.md` ships alongside the project rather
+than in it. `.env.local` is git-ignored and holds every real key.
 
 ## Caveats
 
