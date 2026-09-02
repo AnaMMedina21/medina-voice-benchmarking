@@ -52,6 +52,7 @@ from livekit.plugins import openai as lk_openai
 # cannot drift apart. See bench_config.py.
 from bench_config import ELEVENLABS_MODEL_ID as _SHARED_TTS_MODEL
 from bench_config import ELEVENLABS_VOICE_ID as _SHARED_TTS_VOICE
+from bench_config import SYSTEM_PROMPT
 
 # --- Configuration ----------------------------------------------------------
 
@@ -70,12 +71,8 @@ REQUIRED_ENV_VARS = (
     "LIVEKIT_API_SECRET",
 )
 
-# Identical in both arms. Short answers are realistic for voice and they
-# normalize output length, which is a control we document rather than hide.
-SYSTEM_PROMPT = (
-    "You are a voice assistant. Answer in one or two short sentences. "
-    "No lists, no markdown, no preamble."
-)
+# The system prompt is a control, so it lives in bench_config.py with the
+# other controls. The harness and the live worker must send the same one.
 
 ARM_INCEPTION = "inception-mercury-2"
 ARM_ANTHROPIC = "anthropic-claude-haiku-4-5"
