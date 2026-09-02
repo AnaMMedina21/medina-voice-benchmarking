@@ -108,19 +108,27 @@ Protection → Vercel Authentication → Disabled.
 
 ### Render — the live agent worker
 
-**Service type: Background Worker, not Web Service.** The worker opens an
-outbound connection to LiveKit and registers itself. It listens on no port, so a
-Web Service would fail Render's port scan and be marked unhealthy forever.
+**Service type: Background Worker, not Web Service.** The worker's job is an
+outbound registration to LiveKit, not inbound HTTP. (It does bind a local
+health/status port — `WorkerOptions.port`, 8081 in prod — so a Web Service is
+not impossible, just wrong: nothing should be routing public traffic to it.)
 
 | Setting | Value |
 |---|---|
 | Environment | Python 3 |
 | Build command | `pip install -r requirements.txt` |
 | Start command | `python worker/agent.py start` |
+| Agent name | `voice-bench` — dispatch is explicit, see below |
 | Instance type | Starter is enough; it is one long-lived process |
 
 Set all eight variables above in the Render dashboard. Render does not read
 `.env.local` — that file is git-ignored and never reaches the service.
+
+The worker registers with `agent_name="voice-bench"` and is dispatched
+explicitly by the token route. This is deliberate: with the default empty agent
+name a worker joins **every** room created on the LiveKit project, and this
+project is shared with another app — a bare worker would join its rooms and
+start speaking into them.
 
 Python must be **3.10 or later and below 3.15** (`livekit-agents` requires
 `>=3.10,<3.15`). Pin it with a `.python-version` file if Render's default
@@ -132,6 +140,37 @@ moves outside that window.
 > the benchmark again, and again — billing Inception, Anthropic and ElevenLabs
 > on a loop with nobody watching. The worker entrypoint is `worker/agent.py`,
 > which joins a room and waits.
+
+## Live mode
+
+A toggle in the header switches between Recorded and Live. Live sends a prompt
+you write to both models through the same LiveKit pipeline and speaks the reply
+back in your browser.
+
+```
+browser → POST /api/token → creates room bench-{arm}-{uuid} with metadata
+                          → dispatches the voice-bench worker
+                          → returns a receive-only join token
+worker  → reads { prompt, mustContain, arm } from room metadata
+        → builds that arm's LLM, speaks into the room
+        → publishes ttft_s / first_sentence_s / tts_ttfb_s / passed as attributes
+        → deletes the room when the turn ends
+```
+
+The browser is receive-only: the token grants `canPublish: false`, so no
+microphone path exists. There is no STT anywhere in this project.
+
+**Live numbers are not benchmark numbers.** The live clock starts when you tap
+and stops on the first audible frame, measured with an AnalyserNode rather than
+a track-subscribed event, and it includes your network and the WebRTC transport.
+Observed live TTFA runs several times the recorded figure for that reason. Live
+rows are dashed, tinted, and labelled `browser`; they never share a treatment
+with recorded rows, and nothing live is ever written to `results.csv`.
+
+**Every live prompt requires an expected substring**, checked case-insensitively
+against the model's text. It is written by a person before the call, exactly as
+in the harness. No model judges another model's output. A reply that fails the
+assertion still plays and is still timed — a fast wrong answer is a result.
 
 ## Reading the metrics
 

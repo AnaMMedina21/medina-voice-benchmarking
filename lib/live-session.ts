@@ -1,0 +1,215 @@
+/**
+ * One live turn in the browser: ask for a room, join it receive-only, listen.
+ *
+ * The clock starts when the user taps and stops on the first AUDIBLE frame -
+ * not on track subscription, and not on the audio element's "playing" event,
+ * both of which fire before any sound exists. Audibility is measured with an
+ * AnalyserNode: the first buffer whose RMS clears a silence floor.
+ *
+ * What this number is: wall time in the visitor's browser, including their
+ * network, the WebRTC transport, and the worker's own network to each provider.
+ * It is NOT the benchmark's ttfa_s and the page must never present it as such.
+ *
+ * No microphone is ever requested. The token is receive-only, so no publish
+ * path exists.
+ */
+
+import {
+  RemoteAudioTrack,
+  RemoteTrack,
+  Room,
+  RoomEvent,
+  Track,
+  type RemoteParticipant,
+} from "livekit-client";
+
+export type LiveState = "idle" | "connecting" | "thinking" | "speaking" | "done" | "error";
+
+export type LiveResult = {
+  state: LiveState;
+  /** Browser-measured: tap to first audible frame. Not comparable to the benchmark. */
+  ttfa_s: number | null;
+  /** Worker-reported stage timings. null means the worker never published one. */
+  ttft_s: number | null;
+  first_sentence_s: number | null;
+  tts_ttfb_s: number | null;
+  passed: boolean | null;
+  answer: string | null;
+  error: string | null;
+  arm: string;
+  roomName: string | null;
+};
+
+/** RMS below this is treated as silence. WebRTC emits near-zero frames before
+ *  real audio arrives; without a floor the clock would stop on those. */
+const SILENCE_FLOOR = 0.005;
+const CONNECT_TIMEOUT_MS = 20000;
+const TURN_TIMEOUT_MS = 60000;
+
+function emptyResult(arm: string): LiveResult {
+  return {
+    state: "connecting", ttfa_s: null, ttft_s: null, first_sentence_s: null,
+    tts_ttfb_s: null, passed: null, answer: null, error: null, arm, roomName: null,
+  };
+}
+
+/** Worker attributes are strings; "" means the worker measured nothing. */
+function attrNumber(value: string | undefined): number | null {
+  if (value === undefined || value.trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export async function runLiveTurn(options: {
+  prompt: string;
+  mustContain: string;
+  arm: "mercury" | "haiku";
+  onUpdate?: (result: LiveResult) => void;
+}): Promise<LiveResult> {
+  const { prompt, mustContain, arm, onUpdate } = options;
+
+  // The tap. Everything after this is on the clock.
+  const t0 = performance.now();
+  let result = emptyResult(arm);
+  const emit = (patch: Partial<LiveResult>) => {
+    result = { ...result, ...patch };
+    onUpdate?.(result);
+  };
+  emit({});
+
+  let room: Room | null = null;
+  let element: HTMLAudioElement | null = null;
+
+  // Constructed here, synchronously, because this function is called from the
+  // click handler and an AudioContext created after an await is outside the
+  // user gesture - Chrome starts it suspended, the analyser then reads silence
+  // forever, and ttfa_s stays null while the audio plays perfectly well.
+  let audioCtx: AudioContext | null = null;
+  try {
+    audioCtx = new AudioContext();
+    void audioCtx.resume();
+  } catch {
+    audioCtx = null;
+  }
+
+  const teardown = async () => {
+    try { if (element) { element.pause(); element.srcObject = null; element.remove(); } } catch {}
+    try { if (audioCtx && audioCtx.state !== "closed") await audioCtx.close(); } catch {}
+    try { if (room) await room.disconnect(); } catch {}
+  };
+
+  try {
+    const response = await fetch("/api/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, mustContain, arm }),
+    });
+    const payload = (await response.json()) as {
+      token?: string; url?: string; roomName?: string; error?: string;
+    };
+    if (!response.ok || !payload.token || !payload.url) {
+      throw new Error(payload.error ?? `token route returned ${response.status}`);
+    }
+    emit({ roomName: payload.roomName ?? null });
+
+    room = new Room();
+
+    room.on(RoomEvent.ParticipantAttributesChanged, (_changed, participant) => {
+      const a = (participant as RemoteParticipant).attributes ?? {};
+      const state = a.state;
+      emit({
+        ttft_s: attrNumber(a.ttft_s),
+        first_sentence_s: attrNumber(a.first_sentence_s),
+        tts_ttfb_s: attrNumber(a.tts_ttfb_s),
+        answer: a.answer ?? result.answer,
+        // The assertion is the worker's, run on the model's text. The browser
+        // never re-judges it and never transcribes the audio.
+        passed: a.passed === undefined || a.passed === "" ? result.passed : a.passed === "true",
+        error: a.error ? a.error : result.error,
+        state: state === "error" ? "error" : result.state,
+      });
+    });
+
+    const firstAudible = new Promise<void>((resolve) => {
+      room!.on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
+        if (track.kind !== Track.Kind.Audio) return;
+        emit({ state: "speaking" });
+
+        // Play it. attach() gives an element already wired to the track.
+        element = (track as RemoteAudioTrack).attach();
+        element.autoplay = true;
+        document.body.appendChild(element);
+        element.style.display = "none";
+
+        // Detect audibility separately from playback: subscription and the
+        // element's own events both fire before there is any sound.
+        try {
+          if (!audioCtx) throw new Error("no AudioContext");
+          void audioCtx.resume();
+          const stream = new MediaStream([track.mediaStreamTrack]);
+          const source = audioCtx.createMediaStreamSource(stream);
+          const analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 512;
+          source.connect(analyser); // not connected to destination: the element plays
+          const buffer = new Float32Array(analyser.fftSize);
+
+          const poll = () => {
+            if (!audioCtx || audioCtx.state === "closed") return;
+            analyser.getFloatTimeDomainData(buffer);
+            let sum = 0;
+            for (const sample of buffer) sum += sample * sample;
+            if (Math.sqrt(sum / buffer.length) > SILENCE_FLOOR) {
+              emit({ ttfa_s: Number(((performance.now() - t0) / 1000).toFixed(3)) });
+              resolve();
+              return;
+            }
+            requestAnimationFrame(poll);
+          };
+          requestAnimationFrame(poll);
+        } catch {
+          // No AudioContext available: the turn still plays and still reports
+          // the worker's timings; ttfa_s stays null rather than becoming a
+          // subscription timestamp dressed up as a measurement.
+          resolve();
+        }
+      });
+    });
+
+    const connected = room.connect(payload.url, payload.token);
+    await Promise.race([
+      connected,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("timed out connecting to the room")), CONNECT_TIMEOUT_MS)
+      ),
+    ]);
+    emit({ state: "thinking" });
+
+    const finished = new Promise<void>((resolve) => {
+      const check = () => {
+        if (result.state === "error") return resolve();
+        const done = room?.remoteParticipants.values().next().value?.attributes?.state;
+        if (done === "done" || done === "error") return resolve();
+        setTimeout(check, 150);
+      };
+      check();
+    });
+
+    await Promise.race([
+      Promise.all([firstAudible, finished]),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`turn exceeded ${TURN_TIMEOUT_MS / 1000}s`)), TURN_TIMEOUT_MS)
+      ),
+    ]);
+
+    // Let the tail of the answer play out before tearing the room down.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    emit({ state: result.error ? "error" : "done" });
+  } catch (err) {
+    // Name what failed and which arm. Never fall back to a recorded clip.
+    emit({ state: "error", error: err instanceof Error ? err.message : String(err) });
+  } finally {
+    await teardown();
+  }
+
+  return result;
+}

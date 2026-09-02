@@ -10,12 +10,17 @@
  */
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import AddLivePrompt from "@/components/AddLivePrompt";
+import LivePlayers, { type LivePrompt } from "@/components/LivePlayers";
 import Players from "@/components/Players";
 import PromptList from "@/components/PromptList";
 import Results from "@/components/Results";
 import { ARMS, META, PROMPTS, type ArmId, type Prompt } from "@/lib/run-data";
 
 export default function Page() {
+  const [mode, setMode] = useState<"recorded" | "live">("recorded");
+  const [livePrompts, setLivePrompts] = useState<LivePrompt[]>([]);
+  const [selectedLive, setSelectedLive] = useState<LivePrompt | null>(null);
   const [extra, setExtra] = useState<Prompt[]>([]);
   const [selected, setSelected] = useState<Prompt>(PROMPTS[0]);
   const [bothRunning, setBothRunning] = useState(false);
@@ -59,19 +64,46 @@ export default function Page() {
 
   return (
     <div className="shell">
-      <h1 id="title">{selected.text}</h1>
+      <h1 id="title">{mode === "live" ? (selectedLive?.text ?? "Live mode") : selected.text}</h1>
+      <div className="modes">
+        <button
+          className="mode"
+          aria-pressed={mode === "recorded"}
+          onClick={() => setMode("recorded")}
+        >
+          Recorded
+        </button>
+        <button
+          className="mode"
+          aria-pressed={mode === "live"}
+          onClick={() => setMode("live")}
+        >
+          Live
+        </button>
+      </div>
       <div className="runmeta" id="runmeta">
         <span>{META.prompts} prompts</span>
         <span>{META.reps} reps</span>
         <span>{META.turns} turns</span>
       </div>
 
-      <Players prompt={selected} maxTtfa={maxTtfa} registerPlay={registerPlay} />
+      {mode === "recorded" ? (
+        <Players prompt={selected} maxTtfa={maxTtfa} registerPlay={registerPlay} />
+      ) : selectedLive ? (
+        <LivePlayers key={selectedLive.id} prompt={selectedLive} />
+      ) : (
+        <p className="caption">
+          Add a prompt and an expected answer to run it live against both models.
+        </p>
+      )}
 
-      <button className="both" onClick={() => void playBoth()} disabled={bothRunning}>
-        Play both, one after the other
-      </button>
+      {mode === "recorded" && (
+        <button className="both" onClick={() => void playBoth()} disabled={bothRunning}>
+          Play both, one after the other
+        </button>
+      )}
 
+      {mode === "recorded" && (
       <p className="caption">
         Recorded playback. The silence before each response is that turn&rsquo;s
         measured time to first audio, replayed at true scale from{" "}
@@ -81,11 +113,39 @@ export default function Page() {
         The timing is measured; the audio is a faithful reproduction. This is not
         a live session.
       </p>
+      )}
 
-      <PromptList selected={selected} onSelect={setSelected} extra={extra} />
-      <button className="add" onClick={addPrompt}>
-        Add prompt
-      </button>
+      {mode === "recorded" ? (
+        <>
+          <PromptList selected={selected} onSelect={setSelected} extra={extra} />
+          <button className="add" onClick={addPrompt}>
+            Add prompt
+          </button>
+        </>
+      ) : (
+        <>
+          <div className="list">
+            {livePrompts.map((p) => (
+              <button
+                key={p.id}
+                className="item"
+                aria-current={selectedLive?.id === p.id}
+                onClick={() => setSelectedLive(p)}
+              >
+                <span className="item-text">{p.text}</span>
+                <span className="item-delta">must contain &ldquo;{p.mustContain}&rdquo;</span>
+              </button>
+            ))}
+          </div>
+          <AddLivePrompt
+            onAdd={(text, mustContain) => {
+              const next = { id: `live-${livePrompts.length + 1}`, text, mustContain };
+              setLivePrompts((prev) => [...prev, next]);
+              setSelectedLive(next);
+            }}
+          />
+        </>
+      )}
 
       <Results />
     </div>
