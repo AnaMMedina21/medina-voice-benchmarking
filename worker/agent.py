@@ -183,8 +183,29 @@ async def entrypoint(ctx: JobContext):
     def stage(name, value):
         asyncio.create_task(publish(**{name: value}))
 
+    # Read metadata from the JOB, not from the live room object.
+    #
+    # ctx.room.metadata is the RTC room's synced view, and when the agent is the
+    # FIRST participant to join it can still be empty at this point - the room is
+    # created with metadata, then the agent is dispatched and arrives before any
+    # browser does. ctx.job.room is the snapshot delivered with the job request
+    # itself, so it carries the metadata that existed at creation with no race.
+    #
+    # This is why a probe that connects a listener before dispatching passes
+    # while the real flow fails: the listener's join gives the room time to sync.
+    raw_meta = ""
+    if ctx.job is not None and ctx.job.room is not None:
+        raw_meta = ctx.job.room.metadata or ""
+    if not raw_meta:
+        # Fall back to the live room, giving it a moment to sync.
+        for _ in range(10):
+            raw_meta = ctx.room.metadata or ""
+            if raw_meta:
+                break
+            await asyncio.sleep(0.2)
+
     try:
-        meta = json.loads(ctx.room.metadata or "{}")
+        meta = json.loads(raw_meta or "{}")
     except json.JSONDecodeError as exc:
         await publish(state="error", error=f"room metadata is not JSON: {exc}")
         return
