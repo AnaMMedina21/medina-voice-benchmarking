@@ -37,6 +37,7 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 import unicodedata
 
@@ -48,9 +49,11 @@ from livekit.agents import (
     AgentSession,
     JobContext,
     JobExecutorType,
+    JobRequest,
     WorkerOptions,
     cli,
 )
+from livekit.agents.voice.room_io import RoomInputOptions
 from livekit.agents import llm as agents_llm
 
 from bench_config import (
@@ -83,8 +86,17 @@ REQUIRED_ENV_VARS = (
 
 # How long to hold the room open after the answer finishes, so the browser can
 # read the final attributes before the room disappears.
-LINGER_S = 3.0
+LINGER_S = 1.5
 TURN_TIMEOUT_S = 60.0
+
+# Hard ceiling on jobs running at once. After a restart LiveKit redelivers every
+# pending job at once; with load_threshold lifted the worker accepted them all
+# into one process and fell over again, which is how a single restart turned
+# into a loop. Two, not one, because a turn is still lingering and tearing down
+# when the browser dispatches the next arm.
+MAX_CONCURRENT_JOBS = 2
+_active_jobs = 0
+_active_lock = threading.Lock()
 
 
 def new_turn():
@@ -167,6 +179,20 @@ class LiveAgent(Agent):
 
 
 async def entrypoint(ctx: JobContext):
+    global _active_jobs
+    with _active_lock:
+        _active_jobs += 1
+    try:
+        await _run_turn(ctx)
+    except Exception as exc:  # noqa: BLE001
+        # Never let a job take the worker down with it.
+        logger.exception("turn failed: %s: %s", type(exc).__name__, exc)
+    finally:
+        with _active_lock:
+            _active_jobs -= 1
+
+
+async def _run_turn(ctx: JobContext):
     require_env(REQUIRED_ENV_VARS)
     await ctx.connect()
 
@@ -246,7 +272,16 @@ async def entrypoint(ctx: JobContext):
     session = AgentSession(llm=build_llm(arm), tts=build_tts())
 
     try:
-        await session.start(agent, room=ctx.room)
+        # close_on_disconnect defaults to True, so a browser that drops for even
+        # a moment - backgrounding a tab, switching networks, anything a phone
+        # does constantly - tears the session down mid-answer. That is the
+        # "second answer started and then stopped" symptom. We own the room
+        # lifecycle here and delete it ourselves when the turn ends.
+        await session.start(
+            agent,
+            room=ctx.room,
+            room_input_options=RoomInputOptions(close_on_disconnect=False),
+        )
         agent.turn["t0"] = time.monotonic()
         handle = await asyncio.wait_for(
             session.generate_reply(
@@ -294,9 +329,38 @@ async def entrypoint(ctx: JobContext):
 
     # Hold briefly so the browser can read the final attributes, then take the
     # room down so rooms do not accumulate on the project.
+    #
+    # Every step is guarded. This code ran unguarded before, and when a
+    # disconnect had already closed the session underneath it, the exception
+    # escaped the entrypoint - which with the thread executor takes the whole
+    # worker process down and restarts it. A turn that has already published its
+    # result must never be able to kill the worker on the way out.
     await asyncio.sleep(LINGER_S)
-    await session.aclose()
-    await ctx.delete_room()
+    try:
+        await session.aclose()
+    except Exception as exc:  # noqa: BLE001
+        logger.info("session close raised, ignoring: %s: %s", type(exc).__name__, exc)
+    try:
+        await ctx.delete_room()
+    except Exception as exc:  # noqa: BLE001
+        logger.info("room delete raised, ignoring: %s: %s", type(exc).__name__, exc)
+
+
+async def request_fnc(req: JobRequest) -> None:
+    """Accept unless this worker is already saturated.
+
+    This replaces the CPU-load backpressure, which on a small shared-CPU host
+    measured 0.837 for a single ordinary turn and refused work when there was no
+    second worker to send it to. Counting jobs is deterministic; CPU average is
+    not.
+    """
+    with _active_lock:
+        running = _active_jobs
+    if running >= MAX_CONCURRENT_JOBS:
+        logger.warning("rejecting job for %s: %d already running", req.room.name, running)
+        await req.reject()
+        return
+    await req.accept()
 
 
 if __name__ == "__main__":
@@ -305,6 +369,7 @@ if __name__ == "__main__":
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
+            request_fnc=request_fnc,
             agent_name=AGENT_NAME,
             # Memory, not preference. The defaults assume a fat host: the prod
             # default for num_idle_processes is 4, and each prewarmed process
