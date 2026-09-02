@@ -48,6 +48,27 @@ export type LiveResult = {
 let activeRoom: Room | null = null;
 
 /**
+ * ONE AudioContext for the page, not one per turn.
+ *
+ * A context created inside the user's tap is unlocked. "Play both" then runs the
+ * second turn several awaits later, nowhere near a gesture, so a context built
+ * there starts suspended - and on mobile the second room's <audio> element is
+ * blocked by the same policy. First clip plays, second is silent, nothing errors.
+ * Keeping one unlocked context alive is what makes turn two audible.
+ */
+let sharedAudioCtx: AudioContext | null = null;
+
+function getAudioContext(): AudioContext | null {
+  try {
+    if (!sharedAudioCtx) sharedAudioCtx = new AudioContext();
+    if (sharedAudioCtx.state === "suspended") void sharedAudioCtx.resume();
+    return sharedAudioCtx;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Call from a real user tap when needsAudioUnlock is true. room.startAudio() is
  * the SDK's own remedy for browser autoplay policy and must originate from an
  * interaction; calling it anywhere else silently does nothing.
@@ -71,6 +92,8 @@ const TURN_TIMEOUT_MS = 60000;
  *  OOM-killed worker is the likeliest live failure, and without this the page
  *  sits silent for the full turn timeout showing nothing at all. */
 const AGENT_JOIN_TIMEOUT_MS = 15000;
+/** How long to keep waiting for sound after the worker says the turn is done. */
+const AUDIBLE_GRACE_MS = 2500;
 
 function emptyResult(arm: string): LiveResult {
   return {
@@ -107,21 +130,15 @@ export async function runLiveTurn(options: {
   let room: Room | null = null;
   let element: HTMLAudioElement | null = null;
 
-  // Constructed here, synchronously, because this function is called from the
-  // click handler and an AudioContext created after an await is outside the
-  // user gesture - Chrome starts it suspended, the analyser then reads silence
-  // forever, and ttfa_s stays null while the audio plays perfectly well.
-  let audioCtx: AudioContext | null = null;
-  try {
-    audioCtx = new AudioContext();
-    void audioCtx.resume();
-  } catch {
-    audioCtx = null;
-  }
+  // Touch the shared context now, while we are still inside the click that
+  // started this turn. For the first turn this is what unlocks it; for later
+  // turns it is already unlocked and this just resumes it.
+  const audioCtx = getAudioContext();
 
   const teardown = async () => {
     try { if (element) { element.pause(); element.srcObject = null; element.remove(); } } catch {}
-    try { if (audioCtx && audioCtx.state !== "closed") await audioCtx.close(); } catch {}
+    // The shared context is deliberately NOT closed: closing it would re-lock
+    // audio and the next turn would be silent again.
     try { if (room) await room.disconnect(); } catch {}
   };
 
@@ -162,10 +179,13 @@ export async function runLiveTurn(options: {
         if (track.kind !== Track.Kind.Audio) return;
         emit({ state: "speaking" });
 
-        // Play it. attach() gives an element already wired to the track.
+        // The element is attached because iOS will not flow a WebRTC track that
+        // isn't bound to one - but it is MUTED, because element playback is the
+        // thing the autoplay policy blocks on the second turn. The audible path
+        // is the shared AudioContext below, which one tap unlocked for good.
         element = (track as RemoteAudioTrack).attach();
         element.autoplay = true;
-        // iOS refuses to play media elements that aren't marked inline.
+        element.muted = true;
         element.setAttribute("playsinline", "");
         document.body.appendChild(element);
         element.style.display = "none";
@@ -174,12 +194,13 @@ export async function runLiveTurn(options: {
         // element's own events both fire before there is any sound.
         try {
           if (!audioCtx) throw new Error("no AudioContext");
-          void audioCtx.resume();
+          if (audioCtx.state === "suspended") void audioCtx.resume();
           const stream = new MediaStream([track.mediaStreamTrack]);
           const source = audioCtx.createMediaStreamSource(stream);
           const analyser = audioCtx.createAnalyser();
           analyser.fftSize = 512;
-          source.connect(analyser); // not connected to destination: the element plays
+          source.connect(analyser);
+          analyser.connect(audioCtx.destination); // this is what you actually hear
           const buffer = new Float32Array(analyser.fftSize);
 
           const poll = () => {
@@ -261,10 +282,18 @@ export async function runLiveTurn(options: {
     });
 
     await Promise.race([
-      Promise.all([firstAudible, finished]),
+      finished,
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error(`turn exceeded ${TURN_TIMEOUT_MS / 1000}s`)), TURN_TIMEOUT_MS)
       ),
+    ]);
+
+    // Give audio a moment to arrive, but don't block the turn on it. Blocking
+    // meant a browser that silently refused to play sat here for the full turn
+    // timeout instead of reporting anything.
+    await Promise.race([
+      firstAudible,
+      new Promise((resolve) => setTimeout(resolve, AUDIBLE_GRACE_MS)),
     ]);
 
     // Let the tail of the answer play out before tearing the room down.

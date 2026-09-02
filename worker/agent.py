@@ -38,6 +38,7 @@ import logging
 import os
 import sys
 import time
+import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -262,9 +263,21 @@ async def entrypoint(ctx: JobContext):
         return
 
     text = agent.turn["text"]
+
     # Assertion runs on the model's text. The synthesized audio is never
     # transcribed back to grade it.
-    passed = must_contain.lower() in text.lower()
+    #
+    # Both sides are NFC-normalised first. Accented characters have more than
+    # one valid encoding - "í" can be one code point or "i" plus a combining
+    # accent - and some mobile keyboards emit the decomposed form. Two strings
+    # that look identical then fail a substring test. This is about
+    # representation, not meaning: it does not make the assertion any looser.
+    # A genuinely different character, like typing "Martinez" for "Martínez",
+    # still fails, and should.
+    def norm(value):
+        return unicodedata.normalize("NFC", value).casefold()
+
+    passed = norm(must_contain) in norm(text)
 
     await publish(
         state="done",
@@ -274,7 +287,10 @@ async def entrypoint(ctx: JobContext):
         first_sentence_s=elapsed(agent.turn["t0"], agent.turn["first_sentence"]),
         tts_ttfb_s=elapsed(agent.turn["tts_first_text"], agent.turn["tts_first_audio"]),
     )
-    logger.info("arm=%s passed=%s text=%r", arm, passed, text[:80])
+    # Log what was asked for as well as what came back: without mustContain in
+    # the record, a failed assertion cannot be diagnosed after the fact.
+    logger.info("arm=%s passed=%s mustContain=%r text=%r",
+                arm, passed, must_contain, text[:120])
 
     # Hold briefly so the browser can read the final attributes, then take the
     # room down so rooms do not accumulate on the project.

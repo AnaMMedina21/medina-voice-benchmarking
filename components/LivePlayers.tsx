@@ -131,7 +131,14 @@ export default function LivePlayers({ prompt }: Props) {
               </button>
               <div className="track">
                 <div className="live-stages">
-                  <span>browser TTFA <b>{seconds(r?.ttfa_s ?? null)}</b></span>
+                  {/* A finished turn with no audio timing means the browser
+                      never made a sound. Say that, rather than showing an em
+                      dash that reads like a rounding problem. */}
+                  {state === "done" && r?.ttfa_s === null ? (
+                    <span className="audio-error">no audio reached this browser</span>
+                  ) : (
+                    <span>browser TTFA <b>{seconds(r?.ttfa_s ?? null)}</b></span>
+                  )}
                   <span>model TTFT <b>{seconds(r?.ttft_s ?? null)}</b></span>
                   <span>TTS TTFB <b>{seconds(r?.tts_ttfb_s ?? null)}</b></span>
                 </div>
