@@ -42,7 +42,14 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
-from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli
+from livekit.agents import (
+    Agent,
+    AgentSession,
+    JobContext,
+    JobExecutorType,
+    WorkerOptions,
+    cli,
+)
 from livekit.agents import llm as agents_llm
 
 from bench_config import (
@@ -258,4 +265,19 @@ async def entrypoint(ctx: JobContext):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     require_env(REQUIRED_ENV_VARS)
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, agent_name=AGENT_NAME))
+    cli.run_app(
+        WorkerOptions(
+            entrypoint_fnc=entrypoint,
+            agent_name=AGENT_NAME,
+            # Memory, not preference. The defaults assume a fat host: the prod
+            # default for num_idle_processes is 4, and each prewarmed process
+            # imports the whole plugin stack. Measured locally that is ~417 MB
+            # of RSS before a single job arrives, which OOMs a 512 MB Render
+            # instance the moment a job spawns a fifth process. The kill is a
+            # SIGKILL, so there is no traceback in the logs - the service just
+            # restarts, and the only clue is that the restart follows
+            # "received job request" immediately.
+            job_executor_type=JobExecutorType.THREAD,
+            num_idle_processes=1,
+        )
+    )

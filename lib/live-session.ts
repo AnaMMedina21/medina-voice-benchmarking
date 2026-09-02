@@ -45,6 +45,10 @@ export type LiveResult = {
 const SILENCE_FLOOR = 0.005;
 const CONNECT_TIMEOUT_MS = 20000;
 const TURN_TIMEOUT_MS = 60000;
+/** How long to wait for the worker to actually join after we connect. A dead or
+ *  OOM-killed worker is the likeliest live failure, and without this the page
+ *  sits silent for the full turn timeout showing nothing at all. */
+const AGENT_JOIN_TIMEOUT_MS = 15000;
 
 function emptyResult(arm: string): LiveResult {
   return {
@@ -183,6 +187,27 @@ export async function runLiveTurn(options: {
       ),
     ]);
     emit({ state: "thinking" });
+
+    // A worker that never joins is the common live failure: it is down, it was
+    // OOM-killed, or no worker is registered for this agent name at all. Say
+    // that, and say which arm, rather than timing out silently.
+    const agentJoined = new Promise<void>((resolve, reject) => {
+      const started = performance.now();
+      const check = () => {
+        if ((room?.remoteParticipants.size ?? 0) > 0) return resolve();
+        if (performance.now() - started > AGENT_JOIN_TIMEOUT_MS) {
+          return reject(
+            new Error(
+              `the ${arm} worker never joined the room within ` +
+                `${AGENT_JOIN_TIMEOUT_MS / 1000}s — it may be down or not registered`
+            )
+          );
+        }
+        setTimeout(check, 200);
+      };
+      check();
+    });
+    await agentJoined;
 
     const finished = new Promise<void>((resolve) => {
       const check = () => {
