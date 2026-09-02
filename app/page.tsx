@@ -129,6 +129,17 @@ export default function Page() {
 
       <Results />
       <Legend />
+
+      <footer className="credit">
+        <a
+          href="https://github.com/AnaMMedina21/medina-voice-benchmarking"
+          target="_blank"
+          rel="noreferrer"
+        >
+          created with <span className="heart" aria-hidden="true">♥</span>
+          <span className="sr-only">love</span> by Ana Margarita Medina
+        </a>
+      </footer>
     </div>
   );
 }

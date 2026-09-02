@@ -424,3 +424,37 @@
 
 /* Nothing should ever scroll the document sideways. */
 html, body { max-width: 100%; overflow-x: hidden; }
+
+/* ---- credit -------------------------------------------------------------- */
+/* U+2665, not a colour emoji. Emoji render in their own palette and would be
+   the second colour on a page that spends its whole budget on one accent; this
+   is a text glyph, so it takes the accent like everything else. */
+
+.credit {
+  margin: 40px 0 0;
+  padding-top: 22px;
+  border-top: 1px solid var(--rule);
+  text-align: center;
+}
+
+.credit a {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+  text-decoration: none;
+}
+.credit a:hover { color: var(--ink-soft); }
+.credit a:focus-visible { outline: 2.5px solid var(--accent); outline-offset: 3px; }
+
+.credit .heart { color: var(--accent); font-size: 12.5px; }
+
+/* Visible to screen readers only: the glyph is decorative, the word is not. */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
