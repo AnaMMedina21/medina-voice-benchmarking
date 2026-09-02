@@ -48,6 +48,11 @@ from livekit.plugins import anthropic as lk_anthropic
 from livekit.plugins import elevenlabs as lk_elevenlabs
 from livekit.plugins import openai as lk_openai
 
+# Arm and TTS values live in one place so the harness and the live worker
+# cannot drift apart. See bench_config.py.
+from bench_config import ELEVENLABS_MODEL_ID as _SHARED_TTS_MODEL
+from bench_config import ELEVENLABS_VOICE_ID as _SHARED_TTS_VOICE
+
 # --- Configuration ----------------------------------------------------------
 
 ENV_FILE = ".env.local"
@@ -83,8 +88,8 @@ ANTHROPIC_MODEL = "claude-haiku-4-5"
 # The held-constant half of the pipeline. Pinned explicitly rather than left to
 # the plugin defaults, so the control is visible here and cannot drift when the
 # plugin version changes.
-ELEVENLABS_MODEL = "eleven_flash_v2_5"
-ELEVENLABS_VOICE_ID = "hpp4J3VqNfWAUOO0d1Us"
+ELEVENLABS_MODEL = _SHARED_TTS_MODEL
+ELEVENLABS_VOICE_ID = _SHARED_TTS_VOICE
 
 REPS = 3
 TURN_TIMEOUT_S = 60.0

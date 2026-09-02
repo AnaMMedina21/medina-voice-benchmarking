@@ -1,0 +1,261 @@
+"""LiveKit agent worker: one prompt, one arm, spoken into a room.
+
+Purpose
+    The live half of the voice-latency project. A browser asks the token route
+    for a room; the route creates it with metadata and dispatches this worker
+    into it. The worker reads the prompt from that metadata, builds the LLM for
+    the arm named in the room, speaks the reply into the room, checks the
+    assertion against the TEXT, publishes its stage timings, and leaves.
+
+    This is NOT the benchmark. agent.py is the benchmark: it injects fixed text
+    turns with no room and no network between the measurement and the model.
+    Numbers produced here include the browser's network and the WebRTC
+    transport and are not comparable to results.csv. The page labels them
+    differently and so does this file.
+
+Arm selection
+    Room name carries the arm (bench-mercury-… / bench-haiku-…) because it
+    appears in every LiveKit log line. Room metadata carries it too; if the two
+    disagree the job is refused rather than guessed at.
+
+Assertion
+    `mustContain` is written by a person before the call and checked as a
+    case-insensitive substring of the model's text. No model judges another
+    model. A reply that fails the assertion is still spoken and still timed -
+    a fast wrong answer is a result, not an error.
+
+Published attributes (strings, read by lib/live-session.ts)
+    arm, state, ttft_s, first_sentence_s, tts_ttfb_s, passed, answer, error
+
+Usage
+    python worker/agent.py start     # production (Render)
+    python worker/agent.py dev       # local, verbose
+"""
+
+import asyncio
+import json
+import logging
+import os
+import sys
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from dotenv import load_dotenv
+from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli
+from livekit.agents import llm as agents_llm
+
+from bench_config import (
+    SYSTEM_PROMPT,
+    arm_from_room_name,
+    build_llm,
+    build_tts,
+    require_env,
+)
+
+load_dotenv(".env.local")
+
+logger = logging.getLogger("voice-bench-worker")
+
+# Explicit dispatch only. With an empty agent_name a worker joins EVERY room on
+# the LiveKit project, and this project is shared with another app - a bare
+# worker would join its rooms and start talking into them.
+AGENT_NAME = "voice-bench"
+
+REQUIRED_ENV_VARS = (
+    "LIVEKIT_URL",
+    "LIVEKIT_API_KEY",
+    "LIVEKIT_API_SECRET",
+    "INCEPTION_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "ELEVENLABS_API_KEY",
+    "ELEVENLABS_VOICE_ID",
+    "ELEVENLABS_MODEL_ID",
+)
+
+# How long to hold the room open after the answer finishes, so the browser can
+# read the final attributes before the room disappears.
+LINGER_S = 3.0
+TURN_TIMEOUT_S = 60.0
+
+
+def new_turn():
+    """Timing slots. None means not measured and stays None."""
+    return {
+        "t0": None,
+        "llm_request": None,
+        "first_delta": None,
+        "first_sentence": None,
+        "tts_first_text": None,
+        "tts_first_audio": None,
+        "text": "",
+    }
+
+
+def elapsed(start, end):
+    return None if start is None or end is None else round(end - start, 4)
+
+
+class LiveAgent(Agent):
+    """Stamps stage boundaries as the turn flows through, same as the harness.
+
+    Deliberately no audio sink: the harness attached a null sink to discard
+    frames, and attaching one here would swallow the audio we exist to publish.
+    In a room the session's audio output is the room itself.
+    """
+
+    def __init__(self, on_stage):
+        super().__init__(instructions=SYSTEM_PROMPT)
+        self.turn = new_turn()
+        self._on_stage = on_stage
+
+    async def llm_node(self, chat_ctx, tools, model_settings):
+        turn = self.turn
+        turn["llm_request"] = time.monotonic()
+
+        async for chunk in Agent.default.llm_node(self, chat_ctx, tools, model_settings):
+            text = None
+            if isinstance(chunk, str):
+                text = chunk
+            elif isinstance(chunk, agents_llm.ChatChunk):
+                # chunk.delta is a ChoiceDelta, not the text, and it is non-None
+                # on role-only chunks - gating first-token on it would stamp
+                # ttft on a chunk carrying no content.
+                delta = chunk.delta
+                if delta is not None:
+                    text = delta.content
+
+            if text:
+                if turn["first_delta"] is None:
+                    turn["first_delta"] = time.monotonic()
+                    self._on_stage("ttft_s", elapsed(turn["llm_request"], turn["first_delta"]))
+                turn["text"] += text
+                if turn["first_sentence"] is None and any(p in turn["text"] for p in ".!?"):
+                    turn["first_sentence"] = time.monotonic()
+                    self._on_stage(
+                        "first_sentence_s", elapsed(turn["t0"], turn["first_sentence"])
+                    )
+            yield chunk
+
+        if not turn["text"]:
+            raise RuntimeError("LLM stream ended without emitting any content")
+
+    async def tts_node(self, text, model_settings):
+        turn = self.turn
+
+        async def stamped():
+            async for chunk in text:
+                if turn["tts_first_text"] is None:
+                    turn["tts_first_text"] = time.monotonic()
+                yield chunk
+
+        async for frame in Agent.default.tts_node(self, stamped(), model_settings):
+            if turn["tts_first_audio"] is None:
+                turn["tts_first_audio"] = time.monotonic()
+                self._on_stage(
+                    "tts_ttfb_s", elapsed(turn["tts_first_text"], turn["tts_first_audio"])
+                )
+            yield frame
+
+
+async def entrypoint(ctx: JobContext):
+    require_env(REQUIRED_ENV_VARS)
+    await ctx.connect()
+
+    room_name = ctx.room.name
+    logger.info("job accepted room=%s", room_name)
+
+    attributes = {}
+
+    async def publish(**pairs):
+        """Attributes are strings. A None metric is published as "" - the page
+        renders an em dash for it and never a zero."""
+        attributes.update({k: ("" if v is None else str(v)) for k, v in pairs.items()})
+        await ctx.room.local_participant.set_attributes(dict(attributes))
+
+    def stage(name, value):
+        asyncio.create_task(publish(**{name: value}))
+
+    try:
+        meta = json.loads(ctx.room.metadata or "{}")
+    except json.JSONDecodeError as exc:
+        await publish(state="error", error=f"room metadata is not JSON: {exc}")
+        return
+
+    prompt = (meta.get("prompt") or "").strip()
+    must_contain = (meta.get("mustContain") or "").strip()
+    meta_arm = meta.get("arm")
+    name_arm = arm_from_room_name(room_name)
+
+    # Refuse rather than guess. A mismatch means the caller is confused about
+    # which model it is measuring, and a wrong attribution is worse than a stop.
+    if name_arm is None:
+        await publish(state="error", error=f"room name does not encode an arm: {room_name}")
+        return
+    if meta_arm and meta_arm != name_arm:
+        await publish(
+            state="error",
+            error=f"arm mismatch: metadata says {meta_arm}, room name says {name_arm}",
+        )
+        return
+    if not prompt:
+        await publish(state="error", arm=name_arm, error="room metadata has no prompt")
+        return
+    if not must_contain:
+        # The assertion is the point. A live turn without one is a timing with
+        # no correctness check.
+        await publish(state="error", arm=name_arm, error="room metadata has no mustContain")
+        return
+
+    arm = name_arm
+    logger.info("arm=%s prompt=%r mustContain=%r", arm, prompt, must_contain)
+    await publish(arm=arm, state="thinking")
+
+    agent = LiveAgent(on_stage=stage)
+    session = AgentSession(
+        llm=build_llm(arm), tts=build_tts(), resume_false_interruption=False
+    )
+
+    try:
+        await session.start(agent, room=ctx.room)
+        agent.turn["t0"] = time.monotonic()
+        handle = await asyncio.wait_for(
+            session.generate_reply(
+                user_input=prompt, chat_ctx=agents_llm.ChatContext.empty()
+            ),
+            timeout=TURN_TIMEOUT_S,
+        )
+        await asyncio.wait_for(handle.wait_for_playout(), timeout=TURN_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        await publish(state="error", error=f"turn exceeded {TURN_TIMEOUT_S}s")
+        return
+    except Exception as exc:  # noqa: BLE001 - the reason string is the deliverable
+        await publish(state="error", error=f"{type(exc).__name__}: {exc}")
+        return
+
+    text = agent.turn["text"]
+    # Assertion runs on the model's text. The synthesized audio is never
+    # transcribed back to grade it.
+    passed = must_contain.lower() in text.lower()
+
+    await publish(
+        state="done",
+        passed="true" if passed else "false",
+        answer=" ".join(text.split())[:400],
+        ttft_s=elapsed(agent.turn["llm_request"], agent.turn["first_delta"]),
+        first_sentence_s=elapsed(agent.turn["t0"], agent.turn["first_sentence"]),
+        tts_ttfb_s=elapsed(agent.turn["tts_first_text"], agent.turn["tts_first_audio"]),
+    )
+    logger.info("arm=%s passed=%s text=%r", arm, passed, text[:80])
+
+    # Hold briefly so the browser can read the final attributes, then take the
+    # room down so rooms do not accumulate on the project.
+    await asyncio.sleep(LINGER_S)
+    await session.aclose()
+    await ctx.delete_room()
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    require_env(REQUIRED_ENV_VARS)
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, agent_name=AGENT_NAME))
