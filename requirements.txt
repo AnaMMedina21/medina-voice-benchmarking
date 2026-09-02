@@ -1,0 +1,16 @@
+# Python deps for the benchmark harness (agent.py) and the Render worker.
+# Pinned to what the published run actually used.
+
+livekit-agents==1.7.1
+livekit-plugins-openai==1.7.1
+livekit-plugins-anthropic==1.7.1
+livekit-plugins-elevenlabs==1.7.1
+python-dotenv==1.2.3
+
+# This pin is load-bearing, not tidiness. livekit-plugins-anthropic 1.7.1 passes
+# an httpx.AsyncClient to the Anthropic SDK, but anthropic >=1.0 expects an
+# httpx2.AsyncClient and refuses to construct:
+#   TypeError: Invalid `http_client` argument; Expected an instance of
+#   `httpx2.AsyncClient` but got <class 'httpx.AsyncClient'>
+# A clean install resolves anthropic to 1.3.0 and Arm B dies at startup.
+anthropic==0.125.0

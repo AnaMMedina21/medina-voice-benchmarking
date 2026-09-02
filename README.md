@@ -28,9 +28,7 @@ is 0.526s faster, 2.02x, at the median. Run `analyze.py` for the full table.
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install livekit-agents livekit-plugins-openai \
-    livekit-plugins-anthropic livekit-plugins-elevenlabs python-dotenv
-.venv/bin/python -m pip install "anthropic==0.125.0"   # see below
+.venv/bin/python -m pip install -r requirements.txt
 
 cp .env.example .env.local     # then fill in the keys
 .venv/bin/python agent.py      # writes results.csv
@@ -39,15 +37,101 @@ cp .env.example .env.local     # then fill in the keys
 
 `agent.py --smoke` runs one prompt on both arms if you only want to check wiring.
 
-**The `anthropic==0.125.0` pin is required.** A clean install resolves
-`anthropic` to 1.3.0, which `livekit-plugins-anthropic` 1.7.1 cannot construct a
-client with (`Expected an instance of httpx2.AsyncClient but got httpx.AsyncClient`).
+`requirements.txt` pins `anthropic==0.125.0`, and that pin is load-bearing: a
+clean install resolves `anthropic` to 1.3.0, which `livekit-plugins-anthropic`
+1.7.1 cannot construct a client with (`Expected an instance of
+httpx2.AsyncClient but got httpx.AsyncClient`). Arm B dies at startup without it.
 
-## Credentials
+The page is a separate toolchain:
 
-All six variables in `.env.example` must be set in `.env.local`, which is
-git-ignored and never committed. `agent.py` validates all of them before the
-first network call and names any that are missing.
+```bash
+npm install
+npm run generate       # results.csv -> lib/run-data.ts
+npm run render-audio   # 16 MP3s into public/audio (needs ELEVENLABS_API_KEY)
+npm run dev
+```
+
+## Configuration
+
+Every credential is resolved through an environment variable. Nothing is
+hardcoded, nothing is echoed, and no key is ever exposed to the browser — there
+is no `NEXT_PUBLIC_` variable in this project and there must never be one.
+
+`.env.example` holds the names with empty values and is committed.
+`.env.local` holds the real values, is git-ignored, and is never committed.
+
+| Variable | Local | Vercel | Render worker | What it is |
+|---|:--:|:--:|:--:|---|
+| `INCEPTION_API_KEY` | ✓ | | ✓ | Arm A, Mercury 2 via the OpenAI-compatible endpoint |
+| `ANTHROPIC_API_KEY` | ✓ | | ✓ | Arm B, Claude Haiku 4.5 |
+| `ELEVENLABS_API_KEY` | ✓ | | ✓ | TTS, held constant across both arms |
+| `ELEVENLABS_VOICE_ID` | ✓ | | ✓ | `hpp4J3VqNfWAUOO0d1Us` — the control |
+| `ELEVENLABS_MODEL_ID` | ✓ | | ✓ | `eleven_flash_v2_5` — the control |
+| `LIVEKIT_URL` | ✓ | ✓ | ✓ | `wss://…` project URL |
+| `LIVEKIT_API_KEY` | ✓ | ✓ | ✓ | Server-side only |
+| `LIVEKIT_API_SECRET` | ✓ | ✓ | ✓ | Server-side only |
+
+`agent.py` validates all eight before its first network call and fails with a
+message naming exactly which are missing, so a bad key surfaces at startup
+rather than as a 401 twenty turns into a run.
+
+The two ElevenLabs `*_ID` values exist as variables so the worker and
+`scripts/render-audio.ts` cannot drift apart. If they diverge, the arms stop
+being comparable and the whole benchmark is void.
+
+## Deployment
+
+### Vercel — the page
+
+Zero-config; Next.js is detected. Defaults are correct.
+
+| Setting | Value |
+|---|---|
+| Framework preset | Next.js |
+| Install command | `npm install` |
+| Build command | `npm run build` (runs `generate` then `next build`) |
+| Output directory | Next.js default |
+| Node version | 20 or later |
+
+`npm run build` regenerates `lib/run-data.ts` from `results.csv` before
+building. That file is also committed, so a build still succeeds if the generate
+step is skipped — but then the page renders the committed data, not the CSV in
+that commit. Keep the build command as `npm run build`, not `next build`.
+
+The three `LIVEKIT_*` variables are only needed once the token route exists.
+The static page needs no environment variables at all.
+
+**Deployment Protection is on by default.** The production URL will show
+"Log in to Vercel" to anyone who is not a member of the project. Disable it with
+`vercel project protection disable --sso`, or in Settings → Deployment
+Protection → Vercel Authentication → Disabled.
+
+### Render — the live agent worker
+
+**Service type: Background Worker, not Web Service.** The worker opens an
+outbound connection to LiveKit and registers itself. It listens on no port, so a
+Web Service would fail Render's port scan and be marked unhealthy forever.
+
+| Setting | Value |
+|---|---|
+| Environment | Python 3 |
+| Build command | `pip install -r requirements.txt` |
+| Start command | `python worker/agent.py start` |
+| Instance type | Starter is enough; it is one long-lived process |
+
+Set all eight variables above in the Render dashboard. Render does not read
+`.env.local` — that file is git-ignored and never reaches the service.
+
+Python must be **3.10 or later and below 3.15** (`livekit-agents` requires
+`>=3.10,<3.15`). Pin it with a `.python-version` file if Render's default
+moves outside that window.
+
+> **Do not point the start command at `agent.py` in the repo root.** That is
+> the headless benchmark harness. It runs 48 turns, appends to `results.csv`,
+> and exits 0. Render restarts a Background Worker that exits, so it would run
+> the benchmark again, and again — billing Inception, Anthropic and ElevenLabs
+> on a loop with nobody watching. The worker entrypoint is `worker/agent.py`,
+> which joins a room and waits.
 
 ## Reading the metrics
 
@@ -86,7 +170,13 @@ The build friction log ships separately, alongside the project rather than in
 it.
 
 ```
-agent.py         the pipeline, both arms, one swap variable
+agent.py         the headless benchmark harness, both arms, one swap variable
+requirements.txt Python deps, pinned — the anthropic pin is load-bearing
+app/             the page: ported markup, globals.css from index.html
+components/      Players, PromptList, Results
+lib/run-data.ts  generated from results.csv at build time; never hand-edited
+scripts/         generate-run-data.ts, render-audio.ts
+public/audio/    one MP3 per prompt per arm, the median rep
 prompts.json     8 voice-shaped prompts, each with a deterministic assertion
 analyze.py       stdlib only; reads results.csv, prints a markdown table
 results.csv      raw rows, committed
