@@ -192,10 +192,20 @@ Protection → Vercel Authentication → Disabled.
 
 ### Render — the live agent worker
 
-**Service type: Background Worker, not Web Service.** The worker's job is an
-outbound registration to LiveKit, not inbound HTTP. (It does bind a local
-health/status port — `WorkerOptions.port`, 8081 in prod — so a Web Service is
-not impossible, just wrong: nothing should be routing public traffic to it.)
+**Background Worker is the right service type.** The worker's job is an outbound
+registration to LiveKit, not inbound HTTP, and nothing should be routing public
+traffic to it.
+
+It will also run as a Web Service if that's how it got created. The worker binds
+`$PORT` when the host injects one and falls back to 8081 otherwise, so Render's
+health check is satisfied either way.
+
+**If a deploy says "build successful" and then never finishes, that's the
+symptom of this exact mismatch.** A Web Service waits for a bind on `$PORT`
+before it will call a deploy live. The old default bound 8081, so the build
+succeeded, the process ran, LiveKit saw the worker — registration is outbound,
+so live turns worked — and the dashboard sat at "in progress" until Render gave
+up and restarted it.
 
 | Setting | Value |
 |---|---|

@@ -391,5 +391,14 @@ if __name__ == "__main__":
             # There isn't, and turns are sequential, so accept every job and let
             # a genuine overload show up as latency rather than as a refusal.
             load_threshold=float("inf"),
+            # Bind whatever the host asks for. livekit-agents serves a health
+            # endpoint on 8081 by default, but a Render Web Service injects
+            # $PORT and will not mark a deploy finished until something binds
+            # THAT port - the build succeeds, the process runs, LiveKit sees the
+            # worker because registration is outbound, and the dashboard sits at
+            # "in progress" forever. Honouring $PORT makes the worker correct as
+            # either a Background Worker (no PORT, keeps 8081) or a Web Service.
+            host="0.0.0.0",
+            port=int(os.environ.get("PORT") or 8081),
         )
     )
