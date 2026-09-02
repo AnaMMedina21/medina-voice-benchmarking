@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The two player rows. Ported from index.html: black circle play button, the
+ * The two player rows, ported from the original demo: black circle play button, the
  * measured wait drawn as empty space before the waveform, the ttfa readout on
  * the right with the faster arm in semibold.
  *
@@ -16,7 +16,7 @@ import { fmt } from "@/lib/aggregate";
 
 const AUDIO_BASE = "/audio/";
 const BAR_COUNT = 46;
-/** Widest a wait bar may get, as a share of the track. From index.html. */
+/** Widest a wait bar may get, as a share of the track. From the original demo. */
 const WAIT_MAX_PCT = 34;
 
 type Props = {

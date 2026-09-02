@@ -1,5 +1,5 @@
 /**
- * Deterministic decorative waveform, ported unchanged from index.html.
+ * Deterministic decorative waveform, ported unchanged from the original demo.
  *
  * These bars are NOT derived from the audio file. They are a seeded PRNG keyed
  * on prompt + arm, so a given row always draws the same shape across reloads.

@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * Ported from index.html. Same markup, same CSS, same behaviour: two player
+ * Ported from the original single-file demo. Same markup, same CSS, same
+ * behaviour: two player
  * rows per prompt, the measured wait rendered as empty space before each
  * waveform, a prompt list with per-prompt deltas, and Play both.
  *

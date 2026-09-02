@@ -320,7 +320,7 @@ requirements.txt   Python deps, pinned; the anthropic pin is load-bearing
 
 ```
 app/page.tsx              mode toggle, recorded players, prompt list
-app/globals.css           the <style> block from index.html, extracted verbatim, plus results/live/legend rules
+app/globals.css           the original demo's <style> block, extracted verbatim, plus results/live/legend rules
 app/layout.tsx            shell and metadata
 app/api/token/route.ts    creates the room with metadata, dispatches the worker, mints a receive-only token
 components/Players.tsx    recorded rows: wait drawn to scale, then the clip
@@ -336,7 +336,6 @@ lib/waveform.ts        the decorative bars — seeded, not derived from the audi
 scripts/generate-run-data.ts  results.csv -> lib/run-data.ts
 scripts/render-audio.ts       one MP3 per prompt per arm, from the median rep's exact text
 public/audio/                 16 clips: 8 prompts x 2 arms
-index.html                    the original single-file demo; globals.css was extracted from it
 ```
 
 **The live worker — runs on Render, joins rooms**
