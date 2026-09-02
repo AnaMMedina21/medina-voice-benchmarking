@@ -14,6 +14,7 @@ import AddLivePrompt from "@/components/AddLivePrompt";
 import LivePlayers, { type LivePrompt } from "@/components/LivePlayers";
 import Players from "@/components/Players";
 import PromptList from "@/components/PromptList";
+import Legend from "@/components/Legend";
 import Results from "@/components/Results";
 import { ARMS, META, PROMPTS, type ArmId, type Prompt } from "@/lib/run-data";
 
@@ -148,6 +149,7 @@ export default function Page() {
       )}
 
       <Results />
+      <Legend />
     </div>
   );
 }

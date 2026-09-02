@@ -321,3 +321,48 @@
 .live-form .row { display: flex; gap: 10px; }
 .live-form button { flex: 1; }
 .live-form .ghost { background: #fff; color: var(--ink); border: 1px solid var(--rule); }
+
+/* ---- legend -------------------------------------------------------------- */
+
+.legend { margin-top: 44px; border-top: 1px solid var(--rule); padding-top: 24px; }
+
+.legend h2 {
+  margin: 0 0 16px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--ink-soft);
+  letter-spacing: 0.02em;
+}
+
+.legend dl { margin: 0; }
+
+.legend div {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.legend div:last-child { border-bottom: 0; }
+
+.legend dt {
+  flex: none;
+  width: 66px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.legend dd {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+.legend dd .expand { color: var(--ink-faint); }
+
+@media (max-width: 480px) {
+  .legend div { flex-direction: column; gap: 3px; }
+  .legend dt { width: auto; }
+}
