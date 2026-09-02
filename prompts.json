@@ -1,0 +1,45 @@
+{
+  "_comment": "Eight short conversational turns with deterministic, checkable answers. Assertions are whole-word regex matches against the LLM's text only - never against transcribed audio. Each entry lists every phrasing we accept, including spelled-out numbers, because the system prompt constrains length but not numeral style.",
+  "prompts": [
+    {
+      "id": "capital_france",
+      "prompt": "What's the capital of France?",
+      "expect_any": ["paris"]
+    },
+    {
+      "id": "capital_japan",
+      "prompt": "What's the capital of Japan?",
+      "expect_any": ["tokyo"]
+    },
+    {
+      "id": "cm_in_2m",
+      "prompt": "How many centimeters are in two meters?",
+      "expect_any": ["200", "two hundred"]
+    },
+    {
+      "id": "add_17_26",
+      "prompt": "What's seventeen plus twenty six?",
+      "expect_any": ["43", "forty three", "forty-three"]
+    },
+    {
+      "id": "minutes_in_3h",
+      "prompt": "How many minutes are in three hours?",
+      "expect_any": ["180", "one hundred eighty", "a hundred and eighty"]
+    },
+    {
+      "id": "day_after_monday_3",
+      "prompt": "If today is Monday, what day is it in three days?",
+      "expect_any": ["thursday"]
+    },
+    {
+      "id": "percent_15_of_200",
+      "prompt": "What's fifteen percent of two hundred?",
+      "expect_any": ["30", "thirty"]
+    },
+    {
+      "id": "leap_february",
+      "prompt": "How many days are in February in a leap year?",
+      "expect_any": ["29", "twenty nine", "twenty-nine"]
+    }
+  ]
+}

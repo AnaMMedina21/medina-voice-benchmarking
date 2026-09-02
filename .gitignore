@@ -1,0 +1,32 @@
+# Secrets — never commit real keys. .env.example is the only env file committed,
+# and it holds variable names with empty values.
+.env
+.env.*
+.env.local
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Wall-clock start stamp written during a build session. Not a deliverable.
+.build-start
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Cursor rules carry private planning links and are never published.
+.cursor/
+
+# Ships as a separate attachment alongside the project, not in the repo.
+friction-log.md
+
+# Personal writing/speaking profiles. This repo is public.
+VOICE.md
+writing-style.md
+speaking-style.md
