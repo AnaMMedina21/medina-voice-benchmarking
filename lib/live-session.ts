@@ -38,7 +38,29 @@ export type LiveResult = {
   error: string | null;
   arm: string;
   roomName: string | null;
+  /** True when the browser is refusing to play audio until the user taps again.
+   *  iOS Safari gates the <audio> element separately from the AudioContext, and
+   *  by the time the track arrives we are several awaits past the original tap. */
+  needsAudioUnlock: boolean;
 };
+
+/** The room for the turn in flight, so a tap can unlock playback mid-turn. */
+let activeRoom: Room | null = null;
+
+/**
+ * Call from a real user tap when needsAudioUnlock is true. room.startAudio() is
+ * the SDK's own remedy for browser autoplay policy and must originate from an
+ * interaction; calling it anywhere else silently does nothing.
+ */
+export async function enableAudioPlayback(): Promise<boolean> {
+  if (!activeRoom) return false;
+  try {
+    await activeRoom.startAudio();
+    return activeRoom.canPlaybackAudio;
+  } catch {
+    return false;
+  }
+}
 
 /** RMS below this is treated as silence. WebRTC emits near-zero frames before
  *  real audio arrives; without a floor the clock would stop on those. */
@@ -54,6 +76,7 @@ function emptyResult(arm: string): LiveResult {
   return {
     state: "connecting", ttfa_s: null, ttft_s: null, first_sentence_s: null,
     tts_ttfb_s: null, passed: null, answer: null, error: null, arm, roomName: null,
+    needsAudioUnlock: false,
   };
 }
 
@@ -142,6 +165,8 @@ export async function runLiveTurn(options: {
         // Play it. attach() gives an element already wired to the track.
         element = (track as RemoteAudioTrack).attach();
         element.autoplay = true;
+        // iOS refuses to play media elements that aren't marked inline.
+        element.setAttribute("playsinline", "");
         document.body.appendChild(element);
         element.style.display = "none";
 
@@ -186,6 +211,22 @@ export async function runLiveTurn(options: {
         setTimeout(() => reject(new Error("timed out connecting to the room")), CONNECT_TIMEOUT_MS)
       ),
     ]);
+    activeRoom = room;
+
+    // Browsers gate audio behind a user interaction, and mobile Safari is far
+    // stricter than desktop Chrome. This usually succeeds because the whole
+    // turn started from a tap; when it doesn't, we surface a control rather
+    // than playing to a muted output and reporting a timing for silence.
+    room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+      emit({ needsAudioUnlock: !room!.canPlaybackAudio });
+    });
+    try {
+      await room.startAudio();
+    } catch {
+      /* reported through canPlaybackAudio below, not thrown */
+    }
+    emit({ needsAudioUnlock: !room.canPlaybackAudio });
+
     emit({ state: "thinking" });
 
     // A worker that never joins is the common live failure: it is down, it was
@@ -234,6 +275,7 @@ export async function runLiveTurn(options: {
     emit({ state: "error", error: err instanceof Error ? err.message : String(err) });
   } finally {
     await teardown();
+    activeRoom = null;
   }
 
   return result;

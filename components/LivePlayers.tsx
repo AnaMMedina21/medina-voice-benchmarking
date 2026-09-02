@@ -13,7 +13,7 @@
 
 import { useState } from "react";
 import { ARMS } from "@/lib/run-data";
-import { runLiveTurn, type LiveResult } from "@/lib/live-session";
+import { enableAudioPlayback, runLiveTurn, type LiveResult } from "@/lib/live-session";
 
 export type LivePrompt = { id: string; text: string; mustContain: string };
 
@@ -31,6 +31,7 @@ function seconds(value: number | null): string {
 export default function LivePlayers({ prompt }: Props) {
   const [results, setResults] = useState<Record<string, LiveResult>>({});
   const [busy, setBusy] = useState(false);
+  const [unlocked, setUnlocked] = useState(true);
 
   async function run(armId: string) {
     setBusy(true);
@@ -39,7 +40,10 @@ export default function LivePlayers({ prompt }: Props) {
         prompt: prompt.text,
         mustContain: prompt.mustContain,
         arm: ARM_SLUG[armId],
-        onUpdate: (r) => setResults((prev) => ({ ...prev, [armId]: r })),
+        onUpdate: (r) => {
+          setResults((prev) => ({ ...prev, [armId]: r }));
+          if (r.needsAudioUnlock) setUnlocked(false);
+        },
       });
     } finally {
       setBusy(false);
@@ -56,7 +60,10 @@ export default function LivePlayers({ prompt }: Props) {
           prompt: prompt.text,
           mustContain: prompt.mustContain,
           arm: ARM_SLUG[arm.id],
-          onUpdate: (r) => setResults((prev) => ({ ...prev, [arm.id]: r })),
+          onUpdate: (r) => {
+            setResults((prev) => ({ ...prev, [arm.id]: r }));
+            if (r.needsAudioUnlock) setUnlocked(false);
+          },
         });
       }
     } finally {
@@ -66,6 +73,19 @@ export default function LivePlayers({ prompt }: Props) {
 
   return (
     <div>
+      {!unlocked && (
+        <button
+          className="unlock"
+          onClick={async () => {
+            // Must run inside this tap. startAudio() called anywhere else is
+            // silently ignored by the browser's autoplay policy.
+            const ok = await enableAudioPlayback();
+            if (ok) setUnlocked(true);
+          }}
+        >
+          Your browser blocked the audio — tap to turn sound on
+        </button>
+      )}
       {ARMS.map((arm) => {
         const r = results[arm.id];
         const state = r?.state ?? "idle";

@@ -366,3 +366,22 @@
   .legend div { flex-direction: column; gap: 3px; }
   .legend dt { width: auto; }
 }
+
+/* Shown only when the browser refuses to play audio. Mobile Safari gates media
+   elements separately from the AudioContext, so a second tap is sometimes the
+   only way through. Better a visible control than a timing measured on silence. */
+.unlock {
+  display: block;
+  width: 100%;
+  margin: 0 0 20px;
+  padding: 13px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--accent);
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.unlock:focus-visible { outline: 2.5px solid var(--accent); outline-offset: 3px; }
