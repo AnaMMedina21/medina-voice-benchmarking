@@ -3,9 +3,16 @@
 Building a voice agent got easy. Choosing the model behind it didn't.
 
 The benchmarks you can find rank models on reasoning, instruction following,
-cost per token. None of that is what a caller experiences. What they experience
-is the silence after they stop talking — and that silence is mostly decided by
-which model you picked and how fast it starts talking back.
+cost per token — and most of them were run by the people selling you the model.
+None of that is what a caller experiences anyway. What they experience is the
+silence after they stop talking, and that silence is mostly decided by which
+model you picked and how fast it starts talking back.
+
+Benchmark numbers also move for a pile of reasons that have nothing to do with
+the model: your prompts, the workload, the engine, the hardware, the region,
+how much else is running on the box. **A number without its setup attached
+isn't a result yet.** So the setup is written down below, the raw per-turn rows
+are committed, and you can run the whole thing yourself.
 
 So this measures the silence. Two arms, one variable, everything else pinned.
 
@@ -27,6 +34,59 @@ No STT anywhere. Turns go in as text on purpose: bolt speech recognition onto
 the front and you're measuring its variance too, and you can no longer say the
 LLM was the only thing that changed. No microphone, no browser, no room —
 headless.
+
+## Why time to first audio, and not time to first token
+
+This comes from the SRE side, where the first rule of an SLO is that it measures
+what the user experiences, not what the system happens to emit.
+
+**Time to first token is an internal event.** It's the moment some process
+produced its first output. It's genuinely useful for debugging, and no caller
+has ever waited on a token.
+
+**Time to first audio is when the person stops hearing silence.** That's the
+thing they actually sit through, and the thing that decides whether they assume
+your agent is broken and start talking over it.
+
+The two aren't interchangeable, and the distance between them is the entire
+speech stage:
+
+```
+turn start ──► LLM request ──► first token ──► first speakable chunk ──► first audio byte
+               │                    │                                        │
+               └──── ttft_s ────────┘                                        │
+               └────────────────── ttfa_s ────────────────────────────────────┘
+```
+
+So TTFA is the headline here, and TTFT is published right next to it, because
+you need both to know where a difference came from. **If the arms differ on
+TTFT, that's the model. If they differ only on TTFA, look at your pipeline
+before you blame anyone's model.** That's also why the speech stage is published
+even though it's held constant — you can subtract a number you can see. The
+figures for this run are below.
+
+The same instinct is why every prompt carries an assertion. An SLO that only
+measures speed will happily reward a service that returns the wrong thing
+quickly. Agents can't grade their own homework, so a person writes the expected
+substring before the run and it's checked against the model's text. A fast wrong
+answer isn't a win, and it doesn't get to lower a median.
+
+## Why these two models
+
+It isn't "diffusion vs transformers," which is the framing you usually see. The
+real split is **autoregressive vs diffusion**, and what differs is decoding.
+
+An autoregressive model generates strictly left to right, each token conditioned
+on everything before it. A diffusion model refines groups of tokens in parallel,
+coarse to fine.
+
+That's the bet: if you aren't forced to emit tokens one at a time in order, the
+first chunk can land sooner. Whether that survives contact with a real voice
+pipeline — with a speech stage and a network in front of it — is the thing this
+measures.
+
+Mercury 2 is the diffusion arm. Haiku 4.5 is the autoregressive one, and it was
+picked because it's fast. Beating a slow baseline would prove nothing.
 
 ## Result
 
