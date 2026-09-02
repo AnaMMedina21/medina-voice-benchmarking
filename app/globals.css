@@ -1,0 +1,249 @@
+:root {
+    --ink: #000;
+    --ink-soft: #6b6b6b;
+    --ink-faint: #b8b8b8;
+    --rule: #ececec;
+    --surface: #f6f6f6;
+    --accent: #1a56ff;
+    --wait: #d4d4d4;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 56px 20px 40px;
+    background: #fff;
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell { max-width: 620px; margin: 0 auto; }
+
+  h1 {
+    margin: 0 0 22px;
+    text-align: center;
+    font-size: clamp(30px, 7vw, 46px);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+  }
+
+  .runmeta {
+    display: flex;
+    justify-content: center;
+    gap: 26px;
+    margin-bottom: 46px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink-faint);
+  }
+
+  /* ---- player rows ---- */
+
+  .arm { margin-bottom: 26px; }
+
+  .arm-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin: 0 0 8px 2px;
+  }
+
+  .arm-name {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink-soft);
+  }
+
+  .arm-note {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-faint);
+  }
+
+  .player { display: flex; align-items: center; gap: 16px; }
+
+  .play {
+    flex: none;
+    width: 52px; height: 52px;
+    border: 0; border-radius: 50%;
+    background: var(--ink);
+    color: #fff;
+    cursor: pointer;
+    display: grid; place-items: center;
+    padding: 0;
+  }
+  .play svg { width: 17px; height: 17px; margin-left: 2px; }
+  .play:disabled { background: var(--ink-faint); cursor: default; }
+  .play:focus-visible { outline: 2.5px solid var(--accent); outline-offset: 3px; }
+
+  .track { flex: 1; min-width: 0; }
+
+  /* the wait is drawn to the same scale as the audio that follows it */
+  .bars { display: flex; align-items: center; height: 48px; gap: 2px; }
+
+  .wait {
+    flex: none;
+    height: 100%;
+    position: relative;
+    border-left: 1px solid var(--wait);
+    border-right: 1px solid var(--wait);
+    margin-right: 6px;
+  }
+  .wait::before {
+    content: "";
+    position: absolute; inset: 50% 0 auto 0;
+    height: 1px; background: var(--wait);
+  }
+  .wait-fill {
+    position: absolute; inset: 0 auto 0 0;
+    width: 0; background: rgba(26,86,255,0.13);
+  }
+
+  .bar { flex: 1; background: #2b2b2b; border-radius: 1px; min-width: 1px; }
+  .arm.playing .bar { background: var(--accent); }
+
+  .ttfa {
+    flex: none;
+    width: 62px;
+    text-align: right;
+    font-family: var(--mono);
+    font-size: 16px;
+    font-variant-numeric: tabular-nums;
+  }
+  .ttfa.lead { font-weight: 600; }
+
+  .fail { color: #b00020; font-size: 12px; font-family: var(--mono); }
+
+  /* ---- play both ---- */
+
+  .both {
+    display: block; width: 100%;
+    margin: 30px 0 34px;
+    padding: 15px;
+    border: 1px solid var(--ink);
+    border-radius: 999px;
+    background: #fff;
+    font-family: var(--sans);
+    font-size: 15px; font-weight: 600;
+    cursor: pointer;
+  }
+  .both:hover { background: var(--ink); color: #fff; }
+  .both:focus-visible { outline: 2.5px solid var(--accent); outline-offset: 3px; }
+
+  .caption {
+    margin: 0 0 34px;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    border-left: 2px solid var(--rule);
+    padding-left: 12px;
+  }
+
+  /* ---- prompt list ---- */
+
+  .list { border-top: 1px solid var(--rule); }
+
+  .item {
+    display: flex; align-items: baseline; gap: 14px;
+    width: 100%;
+    padding: 14px 4px;
+    border: 0; border-bottom: 1px solid var(--rule);
+    background: none;
+    text-align: left;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--ink-faint);
+  }
+  .item:hover { color: var(--ink-soft); }
+  .item:focus-visible { outline: 2.5px solid var(--accent); outline-offset: -2px; }
+
+  .item-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item-delta { flex: none; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+
+  .item[aria-current="true"] {
+    color: var(--ink);
+    background: var(--surface);
+    border-left: 2px solid var(--accent);
+    padding-left: 12px;
+  }
+
+  .add {
+    display: block; width: 100%;
+    margin-top: 26px; padding: 16px;
+    border: 0; border-radius: 14px;
+    background: var(--surface);
+    font-family: var(--sans);
+    font-size: 15px; font-weight: 600; color: var(--ink);
+    cursor: pointer;
+  }
+  .add:focus-visible { outline: 2.5px solid var(--accent); outline-offset: 3px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .wait-fill { transition: none !important; }
+  }
+
+/* ---- results section ---------------------------------------------------- */
+/* New markup, same idiom as above: monospace for anything numeric, hairline
+   rules, no boxes, no legend chrome. */
+
+.results { margin-top: 52px; border-top: 1px solid var(--rule); padding-top: 26px; }
+
+.results h2 {
+  margin: 0 0 18px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--ink-soft);
+  letter-spacing: 0.02em;
+}
+
+.summary { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12.5px; }
+.summary th, .summary td { padding: 9px 6px; border-bottom: 1px solid var(--rule); }
+.summary thead th {
+  font-weight: 400;
+  color: var(--ink-faint);
+  text-align: right;
+  font-size: 11.5px;
+  vertical-align: bottom;
+}
+.summary thead th:first-child, .summary tbody th { text-align: left; }
+.summary tbody th { font-weight: 400; color: var(--ink); }
+.summary td { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+.summary td.dash { color: var(--ink-faint); }
+
+.note { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-faint); font-family: var(--mono); }
+
+/* distribution strip */
+.strip { margin-top: 30px; }
+.strip-row { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+.strip-name { flex: none; width: 78px; font-family: var(--mono); font-size: 12.5px; color: var(--ink-soft); }
+.strip-plot { position: relative; flex: 1; height: 34px; border-bottom: 1px solid var(--rule); }
+
+.tick { position: absolute; top: 6px; width: 1px; height: 22px; background: var(--ink); opacity: 0.35; }
+.tick.median { opacity: 1; width: 2px; }
+/* failed assertions are visible but not counted in any number above */
+.tick.hollow { background: none; border-left: 1px dotted var(--ink-faint); opacity: 1; }
+
+.axis { position: relative; height: 16px; margin-left: 92px; }
+.axis span {
+  position: absolute;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.provenance { margin: 22px 0 0; font-size: 11.5px; line-height: 1.6; color: var(--ink-faint); }
+.provenance a { color: var(--ink-faint); }
+
+.limits { margin: 16px 0 0; padding-left: 16px; font-size: 11.5px; line-height: 1.7; color: var(--ink-faint); }
+.limits li { margin-bottom: 2px; }
+
+/* audio that could not be loaded says so; it never falls back to a sound */
+.audio-error { color: #b00020; font-size: 11.5px; font-family: var(--mono); }

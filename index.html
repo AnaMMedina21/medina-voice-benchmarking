@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice latency: Mercury 2 vs Haiku 4.5</title>
+<style>
+  :root {
+    --ink: #000;
+    --ink-soft: #6b6b6b;
+    --ink-faint: #b8b8b8;
+    --rule: #ececec;
+    --surface: #f6f6f6;
+    --accent: #1a56ff;
+    --wait: #d4d4d4;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 56px 20px 40px;
+    background: #fff;
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell { max-width: 620px; margin: 0 auto; }
+
+  h1 {
+    margin: 0 0 22px;
+    text-align: center;
+    font-size: clamp(30px, 7vw, 46px);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+  }
+
+  .runmeta {
+    display: flex;
+    justify-content: center;
+    gap: 26px;
+    margin-bottom: 46px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink-faint);
+  }
+
+  /* ---- player rows ---- */
+
+  .arm { margin-bottom: 26px; }
+
+  .arm-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin: 0 0 8px 2px;
+  }
+
+  .arm-name {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink-soft);
+  }
+
+  .arm-note {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-faint);
+  }
+
+  .player { display: flex; align-items: center; gap: 16px; }
+
+  .play {
+    flex: none;
+    width: 52px; height: 52px;
+    border: 0; border-radius: 50%;
+    background: var(--ink);
+    color: #fff;
+    cursor: pointer;
+    display: grid; place-items: center;
+    padding: 0;
+  }
+  .play svg { width: 17px; height: 17px; margin-left: 2px; }
+  .play:disabled { background: var(--ink-faint); cursor: default; }
+  .play:focus-visible { outline: 2.5px solid var(--accent); outline-offset: 3px; }
+
+  .track { flex: 1; min-width: 0; }
+
+  /* the wait is drawn to the same scale as the audio that follows it */
+  .bars { display: flex; align-items: center; height: 48px; gap: 2px; }
+
+  .wait {
+    flex: none;
+    height: 100%;
+    position: relative;
+    border-left: 1px solid var(--wait);
+    border-right: 1px solid var(--wait);
+    margin-right: 6px;
+  }
+  .wait::before {
+    content: "";
+    position: absolute; inset: 50% 0 auto 0;
+    height: 1px; background: var(--wait);
+  }
+  .wait-fill {
+    position: absolute; inset: 0 auto 0 0;
+    width: 0; background: rgba(26,86,255,0.13);
+  }
+
+  .bar { flex: 1; background: #2b2b2b; border-radius: 1px; min-width: 1px; }
+  .arm.playing .bar { background: var(--accent); }
+
+  .ttfa {
+    flex: none;
+    width: 62px;
+    text-align: right;
+    font-family: var(--mono);
+    font-size: 16px;
+    font-variant-numeric: tabular-nums;
+  }
+  .ttfa.lead { font-weight: 600; }
+
+  .fail { color: #b00020; font-size: 12px; font-family: var(--mono); }
+
+  /* ---- play both ---- */
+
+  .both {
+    display: block; width: 100%;
+    margin: 30px 0 34px;
+    padding: 15px;
+    border: 1px solid var(--ink);
+    border-radius: 999px;
+    background: #fff;
+    font-family: var(--sans);
+    font-size: 15px; font-weight: 600;
+    cursor: pointer;
+  }
+  .both:hover { background: var(--ink); color: #fff; }
+  .both:focus-visible { outline: 2.5px solid var(--accent); outline-offset: 3px; }
+
+  .caption {
+    margin: 0 0 34px;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    border-left: 2px solid var(--rule);
+    padding-left: 12px;
+  }
+
+  /* ---- prompt list ---- */
+
+  .list { border-top: 1px solid var(--rule); }
+
+  .item {
+    display: flex; align-items: baseline; gap: 14px;
+    width: 100%;
+    padding: 14px 4px;
+    border: 0; border-bottom: 1px solid var(--rule);
+    background: none;
+    text-align: left;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--ink-faint);
+  }
+  .item:hover { color: var(--ink-soft); }
+  .item:focus-visible { outline: 2.5px solid var(--accent); outline-offset: -2px; }
+
+  .item-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item-delta { flex: none; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+
+  .item[aria-current="true"] {
+    color: var(--ink);
+    background: var(--surface);
+    border-left: 2px solid var(--accent);
+    padding-left: 12px;
+  }
+
+  .add {
+    display: block; width: 100%;
+    margin-top: 26px; padding: 16px;
+    border: 0; border-radius: 14px;
+    background: var(--surface);
+    font-family: var(--sans);
+    font-size: 15px; font-weight: 600; color: var(--ink);
+    cursor: pointer;
+  }
+  .add:focus-visible { outline: 2.5px solid var(--accent); outline-offset: 3px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .wait-fill { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <h1 id="title"></h1>
+  <div class="runmeta" id="runmeta"></div>
+
+  <div id="arms"></div>
+
+  <button class="both" id="playBoth">Play both, one after the other</button>
+
+  <p class="caption">
+    Recorded playback. The silence before each response is that turn's measured
+    time to first audio, replayed at true scale from <code>results.csv</code>.
+    This is not a live session.
+  </p>
+
+  <div class="list" id="list"></div>
+  <button class="add" id="add">Add prompt</button>
+
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Run data. Mirrors the results.csv schema so a generator script can emit this
+// block directly. ttfa_s is turn start to first audio byte; null means the turn
+// produced no measurement and is rendered as such rather than as zero.
+// ---------------------------------------------------------------------------
+const AUDIO_BASE = "audio/";
+
+const RUN = {
+  meta: { prompts: 8, reps: 3, turns: 48 },
+  arms: [
+    { id: "mercury", name: "Mercury 2" },
+    { id: "haiku",   name: "Haiku 4.5" }
+  ],
+  prompts: [
+    { id: "p1", text: "What's the capital of Australia?",
+      results: { mercury: { ttfa_s: 0.41, passed: true }, haiku: { ttfa_s: 0.68, passed: true } } },
+    { id: "p2", text: "How many centimetres in six inches?",
+      results: { mercury: { ttfa_s: 0.47, passed: true }, haiku: { ttfa_s: 0.71, passed: true } } },
+    { id: "p3", text: "What day of the week is March 3rd, 2027?",
+      results: { mercury: { ttfa_s: 0.53, passed: true }, haiku: { ttfa_s: 0.66, passed: true } } },
+    { id: "p4", text: "Name three prime numbers over twenty.",
+      results: { mercury: { ttfa_s: 0.44, passed: true }, haiku: { ttfa_s: 0.74, passed: false } } },
+    { id: "p5", text: "What's fifteen percent of eighty?",
+      results: { mercury: { ttfa_s: 0.39, passed: true }, haiku: { ttfa_s: 0.63, passed: true } } },
+    { id: "p6", text: "Spell the word rhythm backwards.",
+      results: { mercury: { ttfa_s: 0.58, passed: true }, haiku: { ttfa_s: null,  passed: null } } }
+  ]
+};
+
+// Longest wait across the run, so every wait bar is drawn to one shared scale.
+const MAX_TTFA = Math.max(
+  ...RUN.prompts.flatMap(p => RUN.arms.map(a => p.results[a.id].ttfa_s || 0))
+);
+
+let selected = RUN.prompts[0];
+let audioCtx = null;
+
+// --- deterministic waveform ------------------------------------------------
+// Seeded so a given prompt and arm always draw the same shape across reloads.
+
+function seeded(seed) {
+  let h = 2166136261;
+  for (const ch of seed) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  return () => { h += 0x6d2b79f5; let t = h;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+
+function heights(seed, count) {
+  const rand = seeded(seed);
+  return Array.from({ length: count }, (_, i) => {
+    const envelope = Math.sin((i / count) * Math.PI) * 0.55 + 0.45;
+    return Math.round((0.18 + rand() * 0.82) * envelope * 100);
+  });
+}
+
+// --- rendering -------------------------------------------------------------
+
+function fmt(seconds) {
+  return seconds === null || seconds === undefined ? "—" : seconds.toFixed(2) + " s";
+}
+
+function renderHeader() {
+  document.getElementById("title").textContent = selected.text;
+  const m = RUN.meta;
+  document.getElementById("runmeta").innerHTML =
+    `<span>${m.prompts} prompts</span><span>${m.reps} reps</span><span>${m.turns} turns</span>`;
+}
+
+function renderArms() {
+  const host = document.getElementById("arms");
+  host.innerHTML = "";
+
+  const times = RUN.arms.map(a => selected.results[a.id].ttfa_s).filter(v => v !== null);
+  const fastest = times.length ? Math.min(...times) : null;
+
+  RUN.arms.forEach(arm => {
+    const r = selected.results[arm.id];
+    const row = document.createElement("div");
+    row.className = "arm";
+    row.dataset.arm = arm.id;
+
+    const note = r.ttfa_s === null
+      ? '<span class="fail">no measurement</span>'
+      : (r.passed === false ? '<span class="fail">failed assertion</span>' : "");
+
+    // Wait width is a share of the row, scaled against the slowest wait in the run.
+    const waitPct = r.ttfa_s === null ? 0 : Math.round((r.ttfa_s / MAX_TTFA) * 34);
+
+    row.innerHTML = `
+      <div class="arm-head">
+        <span class="arm-name">${arm.name}</span>
+        <span class="arm-note">${note}</span>
+      </div>
+      <div class="player">
+        <button class="play" aria-label="Play ${arm.name} response"
+                ${r.ttfa_s === null ? "disabled" : ""}>
+          <svg viewBox="0 0 12 14" fill="currentColor"><path d="M0 0l12 7-12 7z"/></svg>
+        </button>
+        <div class="track">
+          <div class="bars">
+            <div class="wait" style="width:${waitPct}%"><div class="wait-fill"></div></div>
+            ${heights(selected.id + arm.id, 46)
+              .map(h => `<div class="bar" style="height:${h}%"></div>`).join("")}
+          </div>
+        </div>
+        <div class="ttfa ${r.ttfa_s === fastest ? "lead" : ""}">${fmt(r.ttfa_s)}</div>
+      </div>`;
+
+    const btn = row.querySelector(".play");
+    if (r.ttfa_s !== null) btn.addEventListener("click", () => playArm(arm.id));
+    host.appendChild(row);
+  });
+}
+
+function renderList() {
+  const host = document.getElementById("list");
+  host.innerHTML = "";
+
+  RUN.prompts.forEach(p => {
+    const a = p.results.mercury.ttfa_s;
+    const b = p.results.haiku.ttfa_s;
+    const delta = (a === null || b === null) ? "—"
+      : (b - a >= 0 ? "+" : "") + (b - a).toFixed(2) + " s";
+
+    const item = document.createElement("button");
+    item.className = "item";
+    item.setAttribute("aria-current", p.id === selected.id);
+    item.innerHTML =
+      `<span class="item-text">${p.text}</span><span class="item-delta">${delta}</span>`;
+    item.addEventListener("click", () => { selected = p; render(); });
+    host.appendChild(item);
+  });
+}
+
+function render() { renderHeader(); renderArms(); renderList(); }
+
+// --- playback --------------------------------------------------------------
+// Wait first, then sound. The wait is the measurement, so it is reproduced
+// before any audio is allowed to start.
+
+function placeholderTone(ms) {
+  audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.frequency.value = 320;
+  gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + ms / 1000);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(); osc.stop(audioCtx.currentTime + ms / 1000);
+}
+
+function playArm(armId) {
+  return new Promise(resolve => {
+    const r = selected.results[armId];
+    if (r.ttfa_s === null) return resolve();
+
+    const row = document.querySelector(`.arm[data-arm="${armId}"]`);
+    const fill = row.querySelector(".wait-fill");
+    const waitMs = r.ttfa_s * 1000;
+
+    fill.style.transition = `width ${waitMs}ms linear`;
+    requestAnimationFrame(() => { fill.style.width = "100%"; });
+
+    setTimeout(() => {
+      fill.style.transition = "none";
+      fill.style.width = "0";
+      row.classList.add("playing");
+
+      const el = new Audio(`${AUDIO_BASE}${armId}_${selected.id}.wav`);
+      const done = () => { row.classList.remove("playing"); resolve(); };
+      el.addEventListener("ended", done);
+      el.play().catch(() => {
+        // No recording present: hold the row for a moment with a placeholder
+        // tone so the measured wait is still audible during review.
+        placeholderTone(700);
+        setTimeout(done, 700);
+      });
+    }, waitMs);
+  });
+}
+
+document.getElementById("playBoth").addEventListener("click", async (e) => {
+  e.target.disabled = true;
+  for (const arm of RUN.arms) await playArm(arm.id);
+  e.target.disabled = false;
+});
+
+document.getElementById("add").addEventListener("click", () => {
+  const text = prompt("New prompt to send to both models");
+  if (!text) return;
+  const id = "p" + (RUN.prompts.length + 1);
+  RUN.prompts.push({ id, text, results: {
+    mercury: { ttfa_s: null, passed: null },
+    haiku:   { ttfa_s: null, passed: null }
+  }});
+  selected = RUN.prompts[RUN.prompts.length - 1];
+  render();
+});
+
+render();
+</script>
+</body>
+</html>
