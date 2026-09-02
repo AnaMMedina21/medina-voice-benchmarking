@@ -110,15 +110,18 @@ export default function Results() {
       </table>
 
       <p className="note">
-        TTFA, p95 and TTFT are computed over turns that passed their assertion.
-        TTS TTFB is over all rows. A turn with no measured value for a metric is
-        excluded from that metric rather than counted as zero
+        TTFA, p95 and TTFT count only turns that passed their assertion. A fast
+        wrong answer isn&rsquo;t a win, so it doesn&rsquo;t get to lower a
+        median. TTS TTFB is over every row, because it&rsquo;s the constant. A
+        turn with no measured value is dropped from that metric rather than
+        counted as zero
         {excluded === 0
           ? "; no turn was excluded on this run"
           : `; ${excluded} such exclusion${excluded === 1 ? "" : "s"} on this run`}
-        . p95 is nearest-rank, so it is an observed value and not a stable tail
-        estimate at this n. A metric with fewer than {MIN_SAMPLES} measured
-        values renders as an em dash.
+. p95 is nearest-rank, so it&rsquo;s a turn that actually happened rather than
+        a stable tail estimate at this n. Fewer than {MIN_SAMPLES} measured
+        values and the cell shows an em dash instead of a number we can&rsquo;t
+        stand behind.
         {thin.length > 0 && ` ${thin.join("; ")}.`}
       </p>
 
@@ -178,20 +181,27 @@ export default function Results() {
         </a>
         , {META.turns} turns across {META.prompts} prompts and {META.reps} reps,
         run from a single client on a wired connection ({META.source}). This page
-        renders those numbers; it doesn&rsquo;t measure anything.
+        renders those numbers. It doesn&rsquo;t measure anything — the harness
+        did that, and you can check its work.
       </p>
 
       <p className="note">What this doesn&rsquo;t measure</p>
       <ul className="limits">
-        <li>No concurrency — one turn at a time, never under load.</li>
-        <li>A single region and a single time window.</li>
         <li>
-          Different provider plugins in front of each model, so plugin overhead
-          is part of each arm&rsquo;s number.
+          Concurrency. One turn at a time, never under load — so this says
+          nothing about either model with a queue behind it.
         </li>
         <li>
-          Framework and TTS overhead is present in both arms, so only the
-          difference between them is model-attributable.
+          More than one region and one time window. Run it yourself from
+          somewhere else and you should expect different absolute numbers.
+        </li>
+        <li>
+          Plugin parity. Each model sits behind a different provider plugin, so
+          that plugin&rsquo;s overhead is baked into its arm.
+        </li>
+        <li>
+          Anything in isolation. Framework and TTS cost is in both arms, so
+          treat the gap between them as the model&rsquo;s, not the totals.
         </li>
       </ul>
     </section>

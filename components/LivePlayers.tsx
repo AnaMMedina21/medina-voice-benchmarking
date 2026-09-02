@@ -129,8 +129,11 @@ export default function LivePlayers({ prompt }: Props) {
 
       <p className="caption">
         Measured in your browser over WebRTC. Same LiveKit pipeline as the
-        recorded runs, but the timing includes your network and the WebRTC
-        transport. Not directly comparable to the benchmark numbers.
+        recorded runs, but this timing also carries your network and the WebRTC
+        transport, so it runs slower and it isn&rsquo;t the same measurement.
+        Don&rsquo;t compare these to the benchmark numbers — compare them to
+        each other. Both arms pay the same transport cost, so the gap between
+        them still belongs to the model.
       </p>
     </div>
   );

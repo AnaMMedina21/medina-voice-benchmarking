@@ -1,7 +1,17 @@
 # Voice latency benchmark — Inception Mercury 2 vs Claude Haiku 4.5
 
-A LiveKit Agents pipeline that measures end-to-end voice latency with the LLM as
-the only variable. The writeup is the deliverable; this file is how to run it.
+Building a voice agent got easy. Choosing the model behind it didn't.
+
+The benchmarks you can find rank models on reasoning, instruction following,
+cost per token. None of that is what a caller experiences. What they experience
+is the silence after they stop talking — and that silence is mostly decided by
+which model you picked and how fast it starts talking back.
+
+So this measures the silence. Two arms, one variable, everything else pinned.
+
+**This is not a model quality benchmark and it is not a leaderboard.** It
+answers one operational question: swap the LLM, change nothing else, and how
+much sooner does a person hear a voice?
 
 Two arms, identical everything else:
 
@@ -13,16 +23,30 @@ Two arms, identical everything else:
 | System prompt | identical | identical |
 | Prompts | identical | identical |
 
-No STT. Turns are injected as text so the comparison does not carry
-speech-recognition variance. No microphone, no browser, no room — headless.
+No STT anywhere. Turns go in as text on purpose: bolt speech recognition onto
+the front and you're measuring its variance too, and you can no longer say the
+LLM was the only thing that changed. No microphone, no browser, no room —
+headless.
 
 ## Result
 
-48 turns (8 prompts x 3 reps x 2 arms), arms interleaved turn by turn, all 48
-passing their assertion with no errors.
+48 turns per run (8 prompts x 3 reps x 2 arms), arms interleaved turn by turn so
+network drift lands on both instead of on whichever went second. Every turn
+passed its assertion. No errors.
 
-**Median time to first audio: Mercury 2 `0.516s`, Haiku 4.5 `1.041s`.** Mercury 2
-is 0.526s faster, 2.02x, at the median. Run `analyze.py` for the full table.
+**Median time to first audio: Mercury 2 `0.52s`, Haiku 4.5 `1.01s`.** Roughly
+half a second, and about 2x, on the number a caller actually feels.
+
+Most of that gap is the model, not the plumbing. Median TTFT — the model alone,
+no speech stage — is `0.33s` against `0.61s`. TTS is the same voice and the
+same model in both arms and lands within `0.03s` of itself, so it isn't what's
+moving.
+
+**One caveat about which number you're reading.** `results.csv` holds two full
+runs, because the harness appends. The page publishes run 2 only, so that `rep`
+stays a unique key. `analyze.py` with no argument reads the whole file, all 96
+turns, and reports `0.52s` / `1.03s`. The two runs agree to within `0.03s`, so
+nothing hinges on the choice — but say which one you're quoting.
 
 ## Run it
 
@@ -160,17 +184,28 @@ worker  → reads { prompt, mustContain, arm } from room metadata
 The browser is receive-only: the token grants `canPublish: false`, so no
 microphone path exists. There is no STT anywhere in this project.
 
-**Live numbers are not benchmark numbers.** The live clock starts when you tap
-and stops on the first audible frame, measured with an AnalyserNode rather than
-a track-subscribed event, and it includes your network and the WebRTC transport.
-Observed live TTFA runs several times the recorded figure for that reason. Live
-rows are dashed, tinted, and labelled `browser`; they never share a treatment
-with recorded rows, and nothing live is ever written to `results.csv`.
+**Live numbers are not benchmark numbers, and the page never lets them look
+like they are.** The live clock starts when you tap and stops on the first
+*audible* frame — measured with an AnalyserNode, because track subscription and
+the audio element's own events both fire before any sound exists. It also
+carries your network and the WebRTC transport, which is why live TTFA runs
+several times the recorded figure. Live rows are dashed, tinted and labelled
+`browser`. They never share a treatment with recorded rows, and nothing live is
+written to `results.csv`.
 
-**Every live prompt requires an expected substring**, checked case-insensitively
-against the model's text. It is written by a person before the call, exactly as
-in the harness. No model judges another model's output. A reply that fails the
-assertion still plays and is still timed — a fast wrong answer is a result.
+The useful comparison in live mode is arm against arm, not live against
+recorded. Both arms pay the same transport cost, so the gap between them still
+belongs to the model.
+
+**Every live prompt requires an expected substring**, written by a person before
+the call and checked case-insensitively against the model's text. No model
+judges another model's output, here or anywhere in this project. Drop the
+assertion and you still get a stopwatch reading — you just can't say whether the
+thing it timed was right.
+
+A reply that fails still plays and is still timed. A fast wrong answer is a
+result, not an error. Watch for format mismatches when you write one: asking for
+`six` and getting `6` is a real failure of your assertion, not of the model.
 
 ## Reading the metrics
 
@@ -184,18 +219,18 @@ assertion still plays and is still timed — a fast wrong answer is a result.
 | `passed` | Deterministic whole-word assertion against the LLM's text |
 | `error` | Reason string, empty when clean |
 
-Two things to read carefully:
+Two of these will trip you up if you skim them.
 
-**`total_s` is not the total.** It ends at the last LLM token, per the metric
-definition, and the LLM finishes before TTS has emitted its first audio byte. So
-`total_s` is smaller than `ttfa_s` on the fast arm, and that is correct rather
-than a bug. Nothing here measures the end of audio playback.
+**`total_s` is not the total.** It ends at the last LLM token, and the model
+finishes before TTS has produced its first byte — so on the fast arm `total_s`
+comes out *smaller* than `ttfa_s`. That's correct, not a bug. Nothing here
+measures the end of playback.
 
-**`total_s` is confounded by output length; `ttfa_s` and `ttft_s` are not.** The
-system prompt constrains answer length identically in both arms, but the arms
-still emit different numbers of tokens — Mercury 2's median completion is 43
-tokens against Haiku's 32. A first-token measurement does not care how long the
-answer runs; a last-token measurement does.
+**`total_s` is confounded by answer length. `ttfa_s` and `ttft_s` aren't.** The
+system prompt caps length the same way in both arms, but they still write
+different amounts — Mercury's median completion is 43 tokens against Haiku's 32.
+A first-token measurement doesn't care how long the answer runs. A last-token
+measurement does. So if you quote one number, quote a first-token one.
 
 An empty CSV field means the value was not measured. It is never zero, and
 `analyze.py` skips it rather than filling it in.

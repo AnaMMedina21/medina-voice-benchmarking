@@ -94,7 +94,9 @@ export default function Page() {
         <LivePlayers key={selectedLive.id} prompt={selectedLive} />
       ) : (
         <p className="caption">
-          Add a prompt and an expected answer to run it live against both models.
+          Write a prompt and the answer you expect, and it runs against both
+          models right here. You&rsquo;ll hear the difference instead of reading
+          about it.
         </p>
       )}
 
@@ -106,13 +108,13 @@ export default function Page() {
 
       {mode === "recorded" && (
       <p className="caption">
-        Recorded playback. The silence before each response is that turn&rsquo;s
-        measured time to first audio, replayed at true scale from{" "}
-        <code>results.csv</code>. The speech itself is a re-synthesis: the
-        harness timed the audio but did not keep it, so each clip was rendered
-        again from that turn&rsquo;s exact text with the same voice and model.
-        The timing is measured; the audio is a faithful reproduction. This is not
-        a live session.
+        Recorded playback. That silence before each answer isn&rsquo;t padding
+        — it&rsquo;s that turn&rsquo;s measured time to first audio, replayed at
+        true scale from <code>results.csv</code>. The speech is a re-synthesis:
+        the harness timed the audio but didn&rsquo;t keep it, so each clip was
+        rendered again from that turn&rsquo;s exact text, same voice, same
+        model. The timing is measured. The audio is a reproduction. Not a live
+        session.
       </p>
       )}
 

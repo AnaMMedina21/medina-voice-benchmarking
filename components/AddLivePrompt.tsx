@@ -20,10 +20,10 @@ export default function AddLivePrompt({ onAdd }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   function submit() {
-    if (!text.trim()) return setError("A prompt is required.");
+    if (!text.trim()) return setError("The prompt can't be empty.");
     if (!mustContain.trim()) {
       return setError(
-        "An expected substring is required — without it the turn is a timing with no correctness check."
+        "Tell us what the answer has to contain. Without it we can time the turn but we can't tell you whether it was right."
       );
     }
     onAdd(text.trim(), mustContain.trim());
@@ -43,7 +43,7 @@ export default function AddLivePrompt({ onAdd }: Props) {
 
   return (
     <div className="live-form">
-      <label htmlFor="live-prompt">Prompt — sent to both models</label>
+      <label htmlFor="live-prompt">Prompt — both models get this, word for word</label>
       <input
         id="live-prompt"
         value={text}
@@ -51,7 +51,7 @@ export default function AddLivePrompt({ onAdd }: Props) {
         placeholder="What's the capital of France?"
       />
 
-      <label htmlFor="live-expect">Expected answer contains</label>
+      <label htmlFor="live-expect">The answer has to contain</label>
       <input
         id="live-expect"
         value={mustContain}
@@ -59,9 +59,12 @@ export default function AddLivePrompt({ onAdd }: Props) {
         placeholder="Paris"
       />
       <p className="hint">
-        Checked as a case-insensitive substring of the model&rsquo;s text, never
-        against the synthesized audio. Required: it is what makes a live turn a
-        result rather than a stopwatch reading.
+        Decide what a correct answer looks like before you hear one. It&rsquo;s
+        checked as a case-insensitive substring of the model&rsquo;s text, never
+        against the audio. Required, because a turn with no assertion is a
+        stopwatch reading — it tells you how fast, never whether it was right.
+        Pick the exact wording carefully: ask for a number and you may get
+        &ldquo;6&rdquo; where you expected &ldquo;six.&rdquo;
       </p>
 
       {error && <p className="hint" style={{ color: "#b00020" }}>{error}</p>}

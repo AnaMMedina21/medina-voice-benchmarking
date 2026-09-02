@@ -1,9 +1,9 @@
 /**
  * Glossary for the abbreviations used on this page.
  *
- * Each entry says what the term means AND where its boundaries are, because
- * the boundaries are what make the numbers comparable or not. "Time to first
- * audio" is uninformative without knowing which two events it spans.
+ * Each entry gives the boundaries, not just the expansion. "Time to first
+ * audio" says nothing useful until you know which two events it spans, and the
+ * spans are what decide whether two numbers can be compared at all.
  */
 
 const TERMS: { term: string; expansion?: string; body: React.ReactNode }[] = [
@@ -11,10 +11,11 @@ const TERMS: { term: string; expansion?: string; body: React.ReactNode }[] = [
     term: "arm",
     body: (
       <>
-        One of the two configurations under test. Everything downstream is held
-        constant — same voice, same TTS model, same system prompt, same prompts,
-        same pipeline code — so the arm names the only thing that differs: the
-        LLM. Here, Mercury 2 or Haiku 4.5.
+        One of the two setups being compared. Everything downstream is pinned —
+        same voice, same TTS model, same system prompt, same prompts, same
+        pipeline code — so the arm names the one thing that changes: the LLM.
+        That&rsquo;s the whole design. If anything else drifts, the comparison
+        is worthless.
       </>
     ),
   },
@@ -23,8 +24,8 @@ const TERMS: { term: string; expansion?: string; body: React.ReactNode }[] = [
     expansion: "large language model",
     body: (
       <>
-        The model that writes the answer, before any speech exists. It is the
-        single variable in this comparison; every other stage is shared.
+        The model that writes the answer, before any speech exists. It&rsquo;s
+        the only variable here. Every other stage is shared between the arms.
       </>
     ),
   },
@@ -33,10 +34,11 @@ const TERMS: { term: string; expansion?: string; body: React.ReactNode }[] = [
     expansion: "time to first audio",
     body: (
       <>
-        Turn start to the first audio byte leaving text-to-speech. The headline
-        number, because it is the part a person actually sits through. In live
-        mode this is measured in your browser and additionally includes your
-        network and the WebRTC transport.
+        Turn start to the first byte of audio leaving text-to-speech. This is
+        the headline, because it&rsquo;s the part a person actually sits
+        through. Nobody waits on a token count. They wait on silence. In live
+        mode the same number also carries your network and the WebRTC
+        transport, so it isn&rsquo;t the same measurement.
       </>
     ),
   },
@@ -45,10 +47,10 @@ const TERMS: { term: string; expansion?: string; body: React.ReactNode }[] = [
     expansion: "time to first token",
     body: (
       <>
-        Request sent to the first content delta coming back from the LLM. This
-        is the model&rsquo;s own responsiveness with none of the pipeline around
-        it, which is why the gap here is the most model-attributable number on
-        the page.
+        Request sent, to the first content coming back from the model. No
+        speech stage, no transport — just the model&rsquo;s own responsiveness.
+        When the two arms differ here, that difference is the model. When they
+        differ only in TTFA, look at the pipeline first.
       </>
     ),
   },
@@ -57,10 +59,10 @@ const TERMS: { term: string; expansion?: string; body: React.ReactNode }[] = [
     expansion: "time to first byte",
     body: (
       <>
-        Used here for text-to-speech: the first speakable text handed to
+        Used here for the speech stage: first speakable text handed to
         ElevenLabs, to the first audio byte back. Both arms use the same voice
-        and model, so this is the constant — it is published so you can subtract
-        it and see what is left.
+        and the same model, so this is the constant. It&rsquo;s published so
+        you can subtract it and see what&rsquo;s left.
       </>
     ),
   },
@@ -69,11 +71,11 @@ const TERMS: { term: string; expansion?: string; body: React.ReactNode }[] = [
     expansion: "95th percentile",
     body: (
       <>
-        The value 95% of turns came in under. Computed by nearest rank, so it is
-        always a value that was actually observed rather than one interpolated
-        between two others. At this sample size it indicates the shape of the
-        tail; it is not a stable tail estimate, which is why the column carries
-        its n.
+        The value 95% of turns came in under — the slow ones you&rsquo;d notice,
+        not the typical one. Computed by nearest rank, so it&rsquo;s always a
+        turn that actually happened rather than a number interpolated between
+        two others. At this sample size treat it as the shape of the tail, not
+        a stable estimate. That&rsquo;s why the column carries its n.
       </>
     ),
   },
