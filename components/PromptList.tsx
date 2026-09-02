@@ -10,7 +10,6 @@ import { PROMPTS, type Prompt } from "@/lib/run-data";
 type Props = {
   selected: Prompt;
   onSelect: (prompt: Prompt) => void;
-  extra: Prompt[];
 };
 
 function delta(prompt: Prompt): string {
@@ -21,10 +20,10 @@ function delta(prompt: Prompt): string {
   return `${diff >= 0 ? "+" : ""}${diff.toFixed(2)} s`;
 }
 
-export default function PromptList({ selected, onSelect, extra }: Props) {
+export default function PromptList({ selected, onSelect }: Props) {
   return (
     <div className="list" id="list">
-      {[...PROMPTS, ...extra].map((prompt) => (
+      {PROMPTS.map((prompt) => (
         <button
           key={prompt.id}
           className="item"

@@ -22,7 +22,6 @@ export default function Page() {
   const [mode, setMode] = useState<"recorded" | "live">("recorded");
   const [livePrompts, setLivePrompts] = useState<LivePrompt[]>([]);
   const [selectedLive, setSelectedLive] = useState<LivePrompt | null>(null);
-  const [extra, setExtra] = useState<Prompt[]>([]);
   const [selected, setSelected] = useState<Prompt>(PROMPTS[0]);
   const [bothRunning, setBothRunning] = useState(false);
   const playRef = useRef<((armId: ArmId) => Promise<void>) | null>(null);
@@ -33,12 +32,10 @@ export default function Page() {
 
   // One shared scale for every wait bar, so two rows are comparable by eye.
   const maxTtfa = useMemo(() => {
-    const all = [...PROMPTS, ...extra].flatMap((p) =>
-      ARMS.map((a) => p.results[a.id].ttfa_s)
-    );
+    const all = PROMPTS.flatMap((p) => ARMS.map((a) => p.results[a.id].ttfa_s));
     const measured = all.filter((v): v is number => v !== null);
     return measured.length ? Math.max(...measured) : 1;
-  }, [extra]);
+  }, []);
 
   async function playBoth() {
     setBothRunning(true);
@@ -46,21 +43,6 @@ export default function Page() {
       if (playRef.current) await playRef.current(arm.id);
     }
     setBothRunning(false);
-  }
-
-  function addPrompt() {
-    const text = window.prompt("New prompt to send to both models");
-    if (!text) return;
-    const blank: Prompt = {
-      id: `extra-${extra.length + 1}`,
-      text,
-      results: {
-        mercury: { ttfa_s: null, passed: null, audio_rep: null, answerText: null },
-        haiku: { ttfa_s: null, passed: null, audio_rep: null, answerText: null },
-      },
-    };
-    setExtra((prev) => [...prev, blank]);
-    setSelected(blank);
   }
 
   return (
@@ -119,12 +101,7 @@ export default function Page() {
       )}
 
       {mode === "recorded" ? (
-        <>
-          <PromptList selected={selected} onSelect={setSelected} extra={extra} />
-          <button className="add" onClick={addPrompt}>
-            Add prompt
-          </button>
-        </>
+        <PromptList selected={selected} onSelect={setSelected} />
       ) : (
         <>
           <div className="list">
