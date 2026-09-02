@@ -240,9 +240,9 @@ async def entrypoint(ctx: JobContext):
     await publish(arm=arm, state="thinking")
 
     agent = LiveAgent(on_stage=stage)
-    session = AgentSession(
-        llm=build_llm(arm), tts=build_tts(), resume_false_interruption=False
-    )
+    # No resume_false_interruption here: it is deprecated in 1.7.1, and nothing
+    # can interrupt this turn anyway - no STT, no VAD, no microphone.
+    session = AgentSession(llm=build_llm(arm), tts=build_tts())
 
     try:
         await session.start(agent, room=ctx.room)
@@ -300,5 +300,15 @@ if __name__ == "__main__":
             # "received job request" immediately.
             job_executor_type=JobExecutorType.THREAD,
             num_idle_processes=1,
+            # The prod default marks the worker unavailable above 0.7 CPU load.
+            # On a small shared-CPU instance one live turn pushes past that
+            # (observed: 0.837), LiveKit stops dispatching, and because this is
+            # the ONLY worker the job has nowhere else to go - the browser waits
+            # and reports that no agent ever joined.
+            #
+            # Backpressure only helps when there is a second worker to shed to.
+            # There isn't, and turns are sequential, so accept every job and let
+            # a genuine overload show up as latency rather than as a refusal.
+            load_threshold=float("inf"),
         )
     )

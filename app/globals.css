@@ -385,3 +385,42 @@
   cursor: pointer;
 }
 .unlock:focus-visible { outline: 2.5px solid var(--accent); outline-offset: 3px; }
+
+/* ---- narrow screens ------------------------------------------------------ */
+/* The page had exactly one layout media query before this (the legend), so an
+   8-column table and a 46-bar waveform were being asked to fit a 350px shell.
+   The table was pushing the whole document sideways. */
+
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+@media (max-width: 560px) {
+  body { padding: 32px 14px 32px; }
+
+  /* Give the waveform room by trimming everything fixed-width around it. */
+  .play { width: 44px; height: 44px; }
+  .player { gap: 10px; }
+  .ttfa { width: 52px; font-size: 14px; }
+  .bars { gap: 1px; height: 40px; }
+
+  /* 46 bars in ~200px is a smear. Drop every other one and the survivors get
+     twice the width, which reads as the same waveform rather than a grey block.
+     .wait is the first child, so the bars sit at positions 2..47. */
+  .bars .bar:nth-child(even) { display: none; }
+
+  .summary { font-size: 11.5px; }
+  .summary th, .summary td { padding: 8px 5px; white-space: nowrap; }
+
+  .strip-name { width: 56px; font-size: 11.5px; }
+  .strip-row { gap: 10px; }
+  .axis { margin-left: 66px; }
+  .axis span { font-size: 10px; }
+
+  .live-stages { margin-left: 0; gap: 10px; font-size: 11px; }
+
+  h1 { font-size: clamp(24px, 8vw, 32px); }
+  .runmeta { gap: 16px; font-size: 11.5px; }
+  .caption { font-size: 12px; }
+}
+
+/* Nothing should ever scroll the document sideways. */
+html, body { max-width: 100%; overflow-x: hidden; }

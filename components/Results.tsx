@@ -66,6 +66,7 @@ export default function Results() {
     <section className="results">
       <h2>Results</h2>
 
+      <div className="table-scroll">
       <table className="summary">
         <thead>
           <tr>
@@ -108,6 +109,7 @@ export default function Results() {
           ))}
         </tbody>
       </table>
+      </div>
 
       <p className="note">
         TTFA, p95 and TTFT count only turns that passed their assertion. A fast
